@@ -20,6 +20,11 @@ npm install
 
 ![Demo](.github/animate.gif)
 
+## Development Guidelines
+
+See the module-specific development and style guide in `VIBE-CODING.md`.
+
+
 ## Config
 
 The entry in `config.js` can include the following options:
