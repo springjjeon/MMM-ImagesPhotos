@@ -208,6 +208,7 @@ Module.register(ourModuleName, {
 
   computeAverageColor(imageEl) {
     try {
+      Log.log(this.name, `computeAverageColor: src=${imageEl && imageEl.src}`);
       const sampleSize = 40;
       const canvas = document.createElement("canvas");
       canvas.width = sampleSize;
@@ -220,9 +221,14 @@ Module.register(ourModuleName, {
       for (let i = 0; i < data.length; i += stride) {
         r += data[i]; g += data[i+1]; b += data[i+2]; count++;
       }
-      if (count === 0) return null;
+      if (count === 0) {
+        Log.warn(this.name, "computeAverageColor: no pixels sampled");
+        return null;
+      }
       r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
-      return `rgb(${r}, ${g}, ${b})`;
+      const rgb = `rgb(${r}, ${g}, ${b})`;
+      Log.log(this.name, `computeAverageColor: result=${rgb}`);
+      return rgb;
     } catch (e) {
       Log.warn(this.name, "computeAverageColor failed", e);
       return null;
@@ -243,21 +249,31 @@ Module.register(ourModuleName, {
     try { if (container) { container.style.backgroundColor = "black"; } } catch (e) {}
     // prepare background-color transition so changes animate smoothly
     try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; } } catch (e) {}
+    Log.log(this.name, `animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing} container=${!!container}`);
 
     // compute average color (may fail on cross-origin)
     let avg = null;
     try { avg = self.computeAverageColor(imgEl); } catch (e) { avg = null; }
+    Log.log(this.name, `animateTransition: computed avg=${avg}`);
 
     // after blackDuration -> set bg to avg and fade in
     setTimeout(() => {
-      try { if (avg && container) container.style.backgroundColor = avg; } catch (e) {}
-      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = self.config.opacity; } catch (e) {}
+      try {
+        if (avg && container) {
+          Log.log(this.name, `animateTransition: setting container background to ${avg}`);
+          container.style.backgroundColor = avg;
+        } else if (!avg) {
+          Log.warn(this.name, "animateTransition: avg color null; leaving black background");
+        }
+      } catch (e) { Log.warn(this.name, "animateTransition: error setting background", e); }
+      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = self.config.opacity; } catch (e) { Log.warn(this.name, "animateTransition: error fading in", e); }
     }, blackDuration);
 
     // schedule fade-out to black after black+fade+display
     setTimeout(() => {
-      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = 0; } catch (e) {}
-      try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; container.style.backgroundColor = "black"; } } catch (e) {}
+      Log.log(this.name, `animateTransition: starting fade-out to black`);
+      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = 0; } catch (e) { Log.warn(this.name, "animateTransition: error fading out", e); }
+      try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; container.style.backgroundColor = "black"; } } catch (e) { Log.warn(this.name, "animateTransition: error resetting background", e); }
     }, blackDuration + fadeDuration + displayDuration);
   },
 
