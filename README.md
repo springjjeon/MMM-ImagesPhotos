@@ -28,6 +28,21 @@ See the module-specific development and style guide in `VIBE-CODING.md`.
 
 See the changelog for release notes and notable changes in `CHANGELOG.md`.
 
+## Recent Changes
+
+Recent notable updates in this module:
+
+- Added `VIBE-CODING.md` development guidelines and linked from README.
+- Added `CHANGELOG.md` with an `Unreleased` section.
+- Improved image transition flow: black → fade-in → display → fade-out with configurable timings.
+- Added average-color background sampling (`computeAverageColor`) and logic to apply it during transitions.
+- Added detailed debug logging and a `debugToConsole` option to echo important logs to the terminal.
+- Attempt to enable canvas readback for cross-origin images via `img.crossOrigin = 'Anonymous'` (requires server CORS).
+- Fixed duplicate event handlers and improved cleanup for fullscreen image handling.
+- Added module-prefixed CSS classes (`mmip-bgimage`, `mmip-foreground`) to reduce style collisions.
+
+If you need help reverting any change or adjusting debug verbosity, open an issue or create a PR.
+
 
 ## Config
 
