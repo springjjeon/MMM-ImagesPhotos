@@ -12,6 +12,7 @@ const NodeHelper = require("node_helper");
 const path = require("path");
 const fs = require("fs");
 const mime = require("mime-types");
+const getAverageColor = require('fast-average-color-node');
 
 module.exports = NodeHelper.create({
   // Override start method.

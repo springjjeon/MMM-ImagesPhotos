@@ -212,8 +212,7 @@ Module.register(ourModuleName, {
 
   computeAverageColor(imageEl) {
     try {
-      Log.log(`${this.name}: computeAverageColor: src=${imageEl && imageEl.src}`);
-      try { if (this.config && this.config.debugToConsole) console.log(this.name + ": computeAverageColor: src=" + (imageEl && imageEl.src)); } catch (e) {}
+      if (this.config.debugToConsole) Log.log(`${this.name}: computeAverageColor: src=${imageEl && imageEl.src}`);
       const sampleSize = 40;
       const canvas = document.createElement("canvas");
       canvas.width = sampleSize;
@@ -227,18 +226,15 @@ Module.register(ourModuleName, {
         r += data[i]; g += data[i+1]; b += data[i+2]; count++;
       }
       if (count === 0) {
-        Log.warn(this.name, "computeAverageColor: no pixels sampled");
-        try { if (this.config && this.config.debugToConsole) console.warn(this.name + ": computeAverageColor: no pixels sampled"); } catch (e) {}
+        if (this.config.debugToConsole) Log.warn(this.name, "computeAverageColor: no pixels sampled");
         return null;
       }
       r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
       const rgb = `rgb(${r}, ${g}, ${b})`;
-      Log.log(`${this.name}: computeAverageColor: result=${rgb}`);
-      try { if (this.config && this.config.debugToConsole) console.log(this.name + ": computeAverageColor: result=" + rgb); } catch (e) {}
+      if (this.config.debugToConsole) Log.log(`${this.name}: computeAverageColor: result=${rgb}`);
       return rgb;
     } catch (e) {
       Log.warn(this.name, "computeAverageColor failed", e);
-      try { if (this.config && this.config.debugToConsole) console.warn(this.name + ": computeAverageColor failed", e); } catch (ee) {}
       return null;
     }
   },
@@ -247,47 +243,52 @@ Module.register(ourModuleName, {
     const self = this;
     const cfg = self.config || {};
     const defs = self.transitionDefaults || {};
+    
+    // Use updateInterval for display duration, falling back to transition default
+    const displayDuration = cfg.updateInterval || defs.displayDuration;
     const blackDuration = cfg.blackDuration || defs.blackDuration;
     const fadeDuration = cfg.fadeDuration || defs.fadeDuration;
-    const displayDuration = cfg.displayDuration || defs.displayDuration;
     const easing = cfg.transitionEasing || defs.easing;
 
-    // ensure starting state
-    try { imgEl.style.opacity = 0; } catch (e) {}
-    try { if (container) { container.style.backgroundColor = "black"; } } catch (e) {}
-    // prepare background-color transition so changes animate smoothly
-    try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; } } catch (e) {}
-    Log.log(`${this.name}: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing} container=${!!container}`);
-    try { if (this.config && this.config.debugToConsole) console.log(this.name + `: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing} container=${!!container}`); } catch (e) {}
+    // The foreground container holds the image. This is what we will fade.
+    const fgContainer = imgEl.parentElement;
+    // In non-FS mode, the main container is the wrapper. In FS mode, it's this.bk.
+    const mainContainer = self.fullscreen ? self.bk : container;
+    
+    // Ensure the main background is black.
+    if (mainContainer) {
+      mainContainer.style.backgroundColor = "black";
+    }
 
-    // compute average color (may fail on cross-origin)
-    let avg = null;
-    try { avg = self.computeAverageColor(imgEl); } catch (e) { avg = null; }
-    Log.log(`${this.name}: animateTransition: computed avg=${avg}`);
-    try { if (this.config && this.config.debugToConsole) console.log(this.name + `: animateTransition: computed avg=${avg}`); } catch (e) {}
+    if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing}`);
 
-    // after blackDuration -> set bg to avg and fade in
-    setTimeout(() => {
-      try {
-        if (avg && container) {
-          Log.log(`${this.name}: animateTransition: setting container background to ${avg}`);
-          try { if (this.config && this.config.debugToConsole) console.log(this.name + `: animateTransition: setting container background to ${avg}`); } catch (e) {}
-          container.style.backgroundColor = avg;
-        } else if (!avg) {
-          Log.warn(`${this.name}: animateTransition: avg color null; leaving black background`);
-          try { if (this.config && this.config.debugToConsole) console.warn(this.name + ": animateTransition: avg color null; leaving black background"); } catch (e) {}
-        }
-      } catch (e) { Log.warn(this.name, "animateTransition: error setting background", e); }
-      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = self.config.opacity; } catch (e) { Log.warn(this.name, "animateTransition: error fading in", e); }
-    }, blackDuration);
+    // Schedule next update after this animation completes
+    if (self.timer) clearTimeout(self.timer);
+    const nextUpdateDelay = blackDuration + fadeDuration + displayDuration + fadeDuration;
+    self.timer = setTimeout(() => {
+      self.updateDom(self.config.animationSpeed);
+    }, nextUpdateDelay);
+    
+    // Compute average color and apply it to the foreground container
+    const avg = self.computeAverageColor(imgEl);
+    if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: computed avg=${avg}`);
+    
+    if (fgContainer) {
+      fgContainer.style.backgroundColor = avg || "black";
+      fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
+      
+      // After blackDuration, fade IN the foreground container
+      setTimeout(() => {
+        if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: fading in`);
+        fgContainer.style.opacity = 1;
+      }, blackDuration);
 
-    // schedule fade-out to black after black+fade+display
-    setTimeout(() => {
-      Log.log(`${this.name}: animateTransition: starting fade-out to black`);
-      try { if (this.config && this.config.debugToConsole) console.log(this.name + ": animateTransition: starting fade-out to black"); } catch (e) {}
-      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = 0; } catch (e) { Log.warn(this.name, "animateTransition: error fading out", e); }
-      try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; container.style.backgroundColor = "black"; } } catch (e) { Log.warn(this.name, "animateTransition: error resetting background", e); }
-    }, blackDuration + fadeDuration + displayDuration);
+      // After display duration, fade OUT the foreground container
+      setTimeout(() => {
+        if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: starting fade-out`);
+        fgContainer.style.opacity = 0;
+      }, blackDuration + fadeDuration + displayDuration);
+    }
   },
 
   suspend() {
@@ -299,9 +300,8 @@ Module.register(ourModuleName, {
   },
   resume() {
     this.suspended = false;
-    if (this.timer === null) {
-      this.startTimer();
-    }
+    // On resume, immediately update to the next image.
+    this.updateDom(this.config.animationSpeed);
   },
 
   getDom() {
@@ -320,16 +320,25 @@ Module.register(ourModuleName, {
     wrapper.style.height = "100%";
     wrapper.style.overflow = "hidden";
     wrapper.style.backgroundColor = "black";
+    
     const photoImage = this.randomPhoto();
 
     if (photoImage) {
+      // Create a foreground container for the image, this is what will be faded
+      const fg = document.createElement("div");
+      fg.className = "mmip-foreground";
+      fg.style.opacity = 0; // start invisible
+      wrapper.appendChild(fg);
+
       const img = document.createElement("img");
       img.id = "mmm-images-photos";
       img.style.maxWidth = this.config.maxWidth;
       img.style.maxHeight = this.config.maxHeight;
-      img.style.opacity = 0; // start invisible
+      // Image is always visible within its container, we fade the container
+      img.style.opacity = this.config.opacity;
       img.className = "bgimage mmip-bgimage";
-      // attach handlers before src for cached images
+
+      // Attach handlers before src for cached images
       img.onerror = (evt) => {
         Log.error("MMM-ImagesPhotos image load failed", evt && evt.currentTarget && evt.currentTarget.src);
         self.updateDom();
@@ -337,185 +346,83 @@ Module.register(ourModuleName, {
       img.onload = (evt) => {
         try { self.animateTransition(evt.currentTarget, wrapper); } catch (e) { Log.warn(self.name, e); }
       };
-      // attempt to allow canvas readback for cross-origin images (requires server CORS)
+
+      // Attempt to allow canvas readback for cross-origin images (requires server CORS)
       try { img.crossOrigin = 'Anonymous'; } catch (e) {}
+      
+      fg.appendChild(img);
       img.src = photoImage.url;
-      wrapper.appendChild(img);
-      self.startTimer();
     }
     return wrapper;
   },
 
   getDomFS() {
     const self = this;
-    // If wrapper div not yet created
+    // If wrapper div not yet created, create it once
     if (this.wrapper === null) {
-      // Create it once, try to reduce image flash on change
-
       this.wrapper = document.createElement("div");
+      // Background element
       this.bk = document.createElement("div");
       this.bk.className = "bgimagefs";
-      if (this.config.fill === true) {
-        this.bk.style.filter = `blur(${this.config.blur}px)`;
-        this.bk.style["-webkit-filter"] = `blur(${this.config.blur}px)`;
-      } else {
-        this.bk.style.backgroundColor = this.config.backgroundColor;
-      }
       this.wrapper.appendChild(this.bk);
+      // Foreground element (for image and avg color)
       this.fg = document.createElement("div");
       this.fg.className = "mmip-foreground";
       this.wrapper.appendChild(this.fg);
     }
+    
+    // Set background style based on config
+    if (this.config.fill === true) {
+      this.bk.style.filter = `blur(${this.config.blur}px)`;
+      this.bk.style["-webkit-filter"] = `blur(${this.config.blur}px)`;
+    } else {
+      this.bk.style.backgroundColor = "black";
+    }
+
     if (this.photos.length) {
-      // Get the size of the margin, if any, we want to be full screen
-      const m = window
-        .getComputedStyle(document.body, null)
-        .getPropertyValue("margin-top");
-      // Set the style for the containing div
-
-      this.fg.style.border = "none";
-      this.fg.style.margin = "0px";
-
       const photoImage = this.randomPhoto();
-      let img = null;
       if (photoImage) {
-        // Create img tag element
-        img = document.createElement("img");
+        // Clear previous image if any
+        while (self.fg.firstChild) {
+          self.fg.removeChild(self.fg.firstChild);
+        }
 
-        // Set default position, corrected in onload handler
-        img.style.left = `0px`;
-        img.style.top = `0px`;
-        img.style.position = "absolute";
-        img.style.zIndex = 2;
-
-        img.style.opacity = 0; // start invisible
-        // attach handlers before src
+        const img = document.createElement("img");
         img.className = "bgimage mmip-bgimage";
+        img.style.position = "absolute";
+        // Image is always visible within its container, we fade the container
+        img.style.opacity = self.config.opacity;
+        
         img.onerror = (evt) => {
-          const eventImage = evt.currentTarget;
-          Log.error(`image load failed=${eventImage.src}`);
+          Log.error("MMM-ImagesPhotos image load failed", evt && evt.currentTarget && evt.currentTarget.src);
           this.updateDom();
         };
+
         img.onload = (evt) => {
           const eventImage = evt.currentTarget;
-          Log.log(`image loaded=${eventImage.src} size=${eventImage.width}:${eventImage.height}`);
-
-          // What's the size of this image and it's parent
+          const m = window.getComputedStyle(document.body, null).getPropertyValue("margin-top");
           const w = eventImage.width;
           const h = eventImage.height;
           const tw = document.body.clientWidth + parseInt(m, 10) * 2;
           const th = document.body.clientHeight + parseInt(m, 10) * 2;
-
-          // Compute the new size and offsets
           const result = self.scaleImage(w, h, tw, th, true);
 
-          // Adjust the image size
           eventImage.width = result.width;
           eventImage.height = result.height;
-
-          Log.log(`image setting size to ${result.width}:${result.height}`);
-          Log.log(
-            `image setting top to ${result.targetleft}:${result.targettop}`
-          );
-
-          // Adjust the image position
           eventImage.style.left = `${result.targetleft}px`;
           eventImage.style.top = `${result.targettop}px`;
 
-          // use animateTransition with background element
-          try { self.animateTransition(eventImage, self.bk); } catch (e) { Log.warn(self.name, e); }
-
-          // If another image was already displayed, remove older ones
-          const c = self.fg.childElementCount;
-          if (c > 1) {
-            for (let i = 0; i < c - 1; i++) {
-              const child = self.fg.firstChild;
-              if (child) {
-                child.style.opacity = 0;
-                child.style.backgroundColor = "rgba(0,0,0,0)";
-                self.fg.removeChild(child);
-              }
-            }
-          }
-          if (self.fg.firstChild) {
-            self.fg.firstChild.style.opacity = self.config.opacity;
-            self.fg.firstChild.style.transition = "opacity 1.25s";
-            if (self.config.fill === true) {
-              self.bk.style.backgroundImage = `url(${self.fg.firstChild.src})`;
-            }
-          }
-          self.startTimer();
-        };
-        // attempt to allow canvas readback for cross-origin images (requires server CORS)
-        try { img.crossOrigin = 'Anonymous'; } catch (e) {}
-        // set src last
-        img.src = photoImage.url;
-        // Append this image to the div
-        this.fg.appendChild(img);
-
-        /* set the image load error handler
-           report the image load failed
-           go load the next one with no delay
-        */   
-        img.onerror = (evt) => {
-          const eventImage = evt.currentTarget;
-          Log.error(
-            `image load failed=${eventImage.src}`
-          );
-          this.updateDom()
-        }
-        /*
-         * Set the onload event handler
-         * The loadurl request will happen when the html is returned to MM and inserted into the dom.
-         */
-        img.onload = (evt) => {
-          // Get the image of the event
-          const eventImage = evt.currentTarget;
-          Log.log(
-            `image loaded=${eventImage.src} size=${eventImage.width}:${eventImage.height}`
-          );
-
-          // What's the size of this image and it's parent
-          const w = eventImage.width;
-          const h = eventImage.height;
-          const tw = document.body.clientWidth + parseInt(m, 10) * 2;
-          const th = document.body.clientHeight + parseInt(m, 10) * 2;
-
-          // Compute the new size and offsets
-          const result = self.scaleImage(w, h, tw, th, true);
-
-          // Adjust the image size
-          eventImage.width = result.width;
-          eventImage.height = result.height;
-
-          Log.log(`image setting size to ${result.width}:${result.height}`);
-          Log.log(
-            `image setting top to ${result.targetleft}:${result.targettop}`
-          );
-
-          // Adjust the image position
-          eventImage.style.left = `${result.targetleft}px`;
-          eventImage.style.top = `${result.targettop}px`;
-
-          // If another image was already displayed
-          const c = self.fg.childElementCount;
-          if (c > 1) {
-            for (let i = 0; i < c - 1; i++) {
-              // Hide it
-              self.fg.firstChild.style.opacity = 0;
-              self.fg.firstChild.style.backgroundColor = "rgba(0,0,0,0)";
-              // Remove the image element from the div
-              self.fg.removeChild(self.fg.firstChild);
-            }
-          }
-          self.fg.firstChild.style.opacity = self.config.opacity;
-
-          self.fg.firstChild.style.transition = "opacity 1.25s";
           if (self.config.fill === true) {
-            self.bk.style.backgroundImage = `url(${self.fg.firstChild.src})`;
+            self.bk.style.backgroundImage = `url(${eventImage.src})`;
           }
-          self.startTimer();
+          
+          try { self.animateTransition(eventImage, self.bk); } catch (e) { Log.warn(self.name, e); }
         };
+
+        try { img.crossOrigin = 'Anonymous'; } catch (e) {}
+        
+        img.src = photoImage.url;
+        this.fg.appendChild(img);
       }
     }
     return this.wrapper;
