@@ -17,4 +17,107 @@
 
 /* not fullscreen */
 .bgimage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+/* module-prefixed alias to avoid global name collisions */
+.mmip-bgimage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+/* container for foreground images to ensure proper stacking */
+.mmip-foreground {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 2;
+}
+
+/* Image Photos effects */
+.bgimage.ip-zoom {
+  transform-origin: center center;
+  animation: ip-zoom 20s ease-in-out both;
+}
+
+.bgimage.ip-fade {
+  animation: ip-fade 18s ease-in-out both;
+}
+
+.bgimage.ip-panleft {
+  transform-origin: center center;
+  animation: ip-panleft 20s linear both;
+}
+
+.bgimage.ip-panright {
+  transform-origin: center center;
+  animation: ip-panright 20s linear both;
+}
+
+.bgimage.ip-grayscale {
+  animation: ip-grayscale 20s ease-in-out both;
+}
+
+.bgimage.ip-sepia {
+  animation: ip-sepia 20s ease-in-out both;
+}
+
+.bgimage.ip-rotate {
+  animation: ip-rotate 16s ease-in-out both;
+}
+
+/* Keyframes */
+@keyframes ip-zoom {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ip-fade {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes ip-panleft {
+  0% { transform: translateX(8%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(-8%); }
+}
+
+@keyframes ip-panright {
+  0% { transform: translateX(-8%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(8%); }
+}
+
+@keyframes ip-grayscale {
+  0% { filter: grayscale(0%); }
+  50% { filter: grayscale(100%); }
+  100% { filter: grayscale(0%); }
+}
+
+@keyframes ip-sepia {
+  0% { filter: sepia(0%); }
+  50% { filter: sepia(60%); }
+  100% { filter: sepia(0%); }
+}
+
+@keyframes ip-rotate {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(2deg) scale(1.03); }
+  100% { transform: rotate(0deg) scale(1); }
 }

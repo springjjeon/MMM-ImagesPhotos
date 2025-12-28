@@ -23,6 +23,13 @@ Module.register(ourModuleName, {
     blur: 8,
     sequential: false
   },
+  // transition defaults (ms)
+  transitionDefaults: {
+    blackDuration: 1000,
+    fadeDuration: 1000,
+    displayDuration: 5000,
+    easing: "ease-in-out"
+  },
 
   wrapper: null,
   suspended: false,
@@ -199,6 +206,61 @@ Module.register(ourModuleName, {
     return result;
   },
 
+  computeAverageColor(imageEl) {
+    try {
+      const sampleSize = 40;
+      const canvas = document.createElement("canvas");
+      canvas.width = sampleSize;
+      canvas.height = sampleSize;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(imageEl, 0, 0, canvas.width, canvas.height);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let r = 0, g = 0, b = 0, count = 0;
+      const stride = 4 * 3;
+      for (let i = 0; i < data.length; i += stride) {
+        r += data[i]; g += data[i+1]; b += data[i+2]; count++;
+      }
+      if (count === 0) return null;
+      r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
+      return `rgb(${r}, ${g}, ${b})`;
+    } catch (e) {
+      Log.warn(this.name, "computeAverageColor failed", e);
+      return null;
+    }
+  },
+
+  animateTransition(imgEl, container) {
+    const self = this;
+    const cfg = self.config || {};
+    const defs = self.transitionDefaults || {};
+    const blackDuration = cfg.blackDuration || defs.blackDuration;
+    const fadeDuration = cfg.fadeDuration || defs.fadeDuration;
+    const displayDuration = cfg.displayDuration || defs.displayDuration;
+    const easing = cfg.transitionEasing || defs.easing;
+
+    // ensure starting state
+    try { imgEl.style.opacity = 0; } catch (e) {}
+    try { if (container) { container.style.backgroundColor = "black"; } } catch (e) {}
+    // prepare background-color transition so changes animate smoothly
+    try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; } } catch (e) {}
+
+    // compute average color (may fail on cross-origin)
+    let avg = null;
+    try { avg = self.computeAverageColor(imgEl); } catch (e) { avg = null; }
+
+    // after blackDuration -> set bg to avg and fade in
+    setTimeout(() => {
+      try { if (avg && container) container.style.backgroundColor = avg; } catch (e) {}
+      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = self.config.opacity; } catch (e) {}
+    }, blackDuration);
+
+    // schedule fade-out to black after black+fade+display
+    setTimeout(() => {
+      try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = 0; } catch (e) {}
+      try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; container.style.backgroundColor = "black"; } } catch (e) {}
+    }, blackDuration + fadeDuration + displayDuration);
+  },
+
   suspend() {
     this.suspended = true;
     if (this.timer !== null) {
@@ -223,16 +285,32 @@ Module.register(ourModuleName, {
   getDomnotFS() {
     const self = this;
     const wrapper = document.createElement("div");
+    // Ensure the wrapper has sizing and a background so color transitions are visible
+    wrapper.style.position = "relative";
+    wrapper.style.width = "100%";
+    wrapper.style.height = "100%";
+    wrapper.style.overflow = "hidden";
+    wrapper.style.backgroundColor = "black";
     const photoImage = this.randomPhoto();
 
     if (photoImage) {
       const img = document.createElement("img");
-      img.src = photoImage.url;
       img.id = "mmm-images-photos";
       img.style.maxWidth = this.config.maxWidth;
       img.style.maxHeight = this.config.maxHeight;
-      img.style.opacity = self.config.opacity;
-      img.className = "bgimage";
+      img.style.opacity = 0; // start invisible
+      img.className = "bgimage mmip-bgimage";
+      // attach handlers before src for cached images
+      img.onerror = (evt) => {
+        Log.error("MMM-ImagesPhotos image load failed", evt && evt.currentTarget && evt.currentTarget.src);
+        self.updateDom();
+      };
+      img.onload = (evt) => {
+        try { self.animateTransition(evt.currentTarget, wrapper); } catch (e) { Log.warn(self.name, e); }
+      };
+      // attempt to allow canvas readback for cross-origin images (requires server CORS)
+      try { img.crossOrigin = 'Anonymous'; } catch (e) {}
+      img.src = photoImage.url;
       wrapper.appendChild(img);
       self.startTimer();
     }
@@ -256,6 +334,7 @@ Module.register(ourModuleName, {
       }
       this.wrapper.appendChild(this.bk);
       this.fg = document.createElement("div");
+      this.fg.className = "mmip-foreground";
       this.wrapper.appendChild(this.fg);
     }
     if (this.photos.length) {
@@ -275,13 +354,73 @@ Module.register(ourModuleName, {
         img = document.createElement("img");
 
         // Set default position, corrected in onload handler
-        img.style.left = `${0}px`;
-        img.style.top = document.body.clientHeight + parseInt(m, 10) * 2;
-        img.style.position = "relative";
+        img.style.left = `0px`;
+        img.style.top = `0px`;
+        img.style.position = "absolute";
+        img.style.zIndex = 2;
 
+        img.style.opacity = 0; // start invisible
+        // attach handlers before src
+        img.className = "bgimage mmip-bgimage";
+        img.onerror = (evt) => {
+          const eventImage = evt.currentTarget;
+          Log.error(`image load failed=${eventImage.src}`);
+          this.updateDom();
+        };
+        img.onload = (evt) => {
+          const eventImage = evt.currentTarget;
+          Log.log(`image loaded=${eventImage.src} size=${eventImage.width}:${eventImage.height}`);
+
+          // What's the size of this image and it's parent
+          const w = eventImage.width;
+          const h = eventImage.height;
+          const tw = document.body.clientWidth + parseInt(m, 10) * 2;
+          const th = document.body.clientHeight + parseInt(m, 10) * 2;
+
+          // Compute the new size and offsets
+          const result = self.scaleImage(w, h, tw, th, true);
+
+          // Adjust the image size
+          eventImage.width = result.width;
+          eventImage.height = result.height;
+
+          Log.log(`image setting size to ${result.width}:${result.height}`);
+          Log.log(
+            `image setting top to ${result.targetleft}:${result.targettop}`
+          );
+
+          // Adjust the image position
+          eventImage.style.left = `${result.targetleft}px`;
+          eventImage.style.top = `${result.targettop}px`;
+
+          // use animateTransition with background element
+          try { self.animateTransition(eventImage, self.bk); } catch (e) { Log.warn(self.name, e); }
+
+          // If another image was already displayed, remove older ones
+          const c = self.fg.childElementCount;
+          if (c > 1) {
+            for (let i = 0; i < c - 1; i++) {
+              const child = self.fg.firstChild;
+              if (child) {
+                child.style.opacity = 0;
+                child.style.backgroundColor = "rgba(0,0,0,0)";
+                self.fg.removeChild(child);
+              }
+            }
+          }
+          if (self.fg.firstChild) {
+            self.fg.firstChild.style.opacity = self.config.opacity;
+            self.fg.firstChild.style.transition = "opacity 1.25s";
+            if (self.config.fill === true) {
+              self.bk.style.backgroundImage = `url(${self.fg.firstChild.src})`;
+            }
+          }
+          self.startTimer();
+        };
+        // attempt to allow canvas readback for cross-origin images (requires server CORS)
+        try { img.crossOrigin = 'Anonymous'; } catch (e) {}
+        // set src last
         img.src = photoImage.url;
-        // Make invisible
-        img.style.opacity = 0;
         // Append this image to the div
         this.fg.appendChild(img);
 
