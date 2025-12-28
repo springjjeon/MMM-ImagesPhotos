@@ -1,5 +1,10 @@
 # Changelog
 
+All notable changes to this module will be documented in this file.
+
+## [Unreleased]
+- Add VIBE-CODING.md and link from README
+
 ## [0.2.0] - 2023-12-19
 
 - Add support for nested image folders, and support for sequential image vs random

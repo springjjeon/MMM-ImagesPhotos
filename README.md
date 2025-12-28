@@ -24,6 +24,10 @@ npm install
 
 See the module-specific development and style guide in `VIBE-CODING.md`.
 
+## Changelog
+
+See the changelog for release notes and notable changes in `CHANGELOG.md`.
+
 
 ## Config
 
