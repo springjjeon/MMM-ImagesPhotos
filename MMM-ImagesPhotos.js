@@ -45,6 +45,9 @@ Module.register(ourModuleName, {
     this.lastPhotoIndex = -1;
     this.config.id = this.identifier;
     this.sendSocketNotification("CONFIG", this.config);
+    // Explicit startup log for terminal visibility
+    try { Log.info(`${this.name}: start()`); } catch (e) {}
+    try { if (this.config && this.config.debugToConsole) console.log(`${this.name}: start()`); } catch (e) {}
   },
   getStyles() {
     return ["MMM-ImagesPhotos.css"];
@@ -209,7 +212,7 @@ Module.register(ourModuleName, {
 
   computeAverageColor(imageEl) {
     try {
-      Log.log(this.name, `computeAverageColor: src=${imageEl && imageEl.src}`);
+      Log.log(`${this.name}: computeAverageColor: src=${imageEl && imageEl.src}`);
       try { if (this.config && this.config.debugToConsole) console.log(this.name + ": computeAverageColor: src=" + (imageEl && imageEl.src)); } catch (e) {}
       const sampleSize = 40;
       const canvas = document.createElement("canvas");
@@ -230,7 +233,7 @@ Module.register(ourModuleName, {
       }
       r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
       const rgb = `rgb(${r}, ${g}, ${b})`;
-      Log.log(this.name, `computeAverageColor: result=${rgb}`);
+      Log.log(`${this.name}: computeAverageColor: result=${rgb}`);
       try { if (this.config && this.config.debugToConsole) console.log(this.name + ": computeAverageColor: result=" + rgb); } catch (e) {}
       return rgb;
     } catch (e) {
@@ -254,24 +257,24 @@ Module.register(ourModuleName, {
     try { if (container) { container.style.backgroundColor = "black"; } } catch (e) {}
     // prepare background-color transition so changes animate smoothly
     try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; } } catch (e) {}
-    Log.log(this.name, `animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing} container=${!!container}`);
+    Log.log(`${this.name}: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing} container=${!!container}`);
     try { if (this.config && this.config.debugToConsole) console.log(this.name + `: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing} container=${!!container}`); } catch (e) {}
 
     // compute average color (may fail on cross-origin)
     let avg = null;
     try { avg = self.computeAverageColor(imgEl); } catch (e) { avg = null; }
-    Log.log(this.name, `animateTransition: computed avg=${avg}`);
+    Log.log(`${this.name}: animateTransition: computed avg=${avg}`);
     try { if (this.config && this.config.debugToConsole) console.log(this.name + `: animateTransition: computed avg=${avg}`); } catch (e) {}
 
     // after blackDuration -> set bg to avg and fade in
     setTimeout(() => {
       try {
         if (avg && container) {
-          Log.log(this.name, `animateTransition: setting container background to ${avg}`);
+          Log.log(`${this.name}: animateTransition: setting container background to ${avg}`);
           try { if (this.config && this.config.debugToConsole) console.log(this.name + `: animateTransition: setting container background to ${avg}`); } catch (e) {}
           container.style.backgroundColor = avg;
         } else if (!avg) {
-          Log.warn(this.name, "animateTransition: avg color null; leaving black background");
+          Log.warn(`${this.name}: animateTransition: avg color null; leaving black background`);
           try { if (this.config && this.config.debugToConsole) console.warn(this.name + ": animateTransition: avg color null; leaving black background"); } catch (e) {}
         }
       } catch (e) { Log.warn(this.name, "animateTransition: error setting background", e); }
@@ -280,7 +283,7 @@ Module.register(ourModuleName, {
 
     // schedule fade-out to black after black+fade+display
     setTimeout(() => {
-      Log.log(this.name, `animateTransition: starting fade-out to black`);
+      Log.log(`${this.name}: animateTransition: starting fade-out to black`);
       try { if (this.config && this.config.debugToConsole) console.log(this.name + ": animateTransition: starting fade-out to black"); } catch (e) {}
       try { imgEl.style.transition = `opacity ${fadeDuration}ms ${easing}`; imgEl.style.opacity = 0; } catch (e) { Log.warn(this.name, "animateTransition: error fading out", e); }
       try { if (container) { container.style.transition = `background-color ${fadeDuration}ms ${easing}`; container.style.backgroundColor = "black"; } } catch (e) { Log.warn(this.name, "animateTransition: error resetting background", e); }
