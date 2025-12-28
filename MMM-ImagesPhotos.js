@@ -23,6 +23,10 @@ Module.register(ourModuleName, {
     blur: 8,
     sequential: false
     ,debugToConsole: true
+    ,imageEffects: [
+      "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
+      "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown"
+    ]
   },
   // transition defaults (ms)
   transitionDefaults: {
@@ -95,17 +99,7 @@ Module.register(ourModuleName, {
       });
     }
   },
-  startTimer() {
-    const self = this;
-    self.timer = setTimeout(() => {
-      // Clear timer value for resume
-      self.timer = null;
-      if (self.suspended === false) {
-        self.updateDom(self.config.animationSpeed);
-      }
-    }, this.config.updateInterval);
-  },
-
+  
   socketNotificationReceived(notification, payload, source) {
     if (notification === "READY" && payload === this.identifier) {
       // Schedule update timer.
@@ -336,7 +330,11 @@ Module.register(ourModuleName, {
       img.style.maxHeight = this.config.maxHeight;
       // Image is always visible within its container, we fade the container
       img.style.opacity = this.config.opacity;
-      img.className = "bgimage mmip-bgimage";
+      
+      // Add random animation effect
+      const effects = this.config.imageEffects;
+      const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+      img.className = "bgimage mmip-bgimage " + randomEffect;
 
       // Attach handlers before src for cached images
       img.onerror = (evt) => {
@@ -388,7 +386,12 @@ Module.register(ourModuleName, {
         }
 
         const img = document.createElement("img");
-        img.className = "bgimage mmip-bgimage";
+        
+        // Add random animation effect
+        const effects = this.config.imageEffects;
+        const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+        img.className = "bgimage mmip-bgimage " + randomEffect;
+
         img.style.position = "absolute";
         // Image is always visible within its container, we fade the container
         img.style.opacity = self.config.opacity;

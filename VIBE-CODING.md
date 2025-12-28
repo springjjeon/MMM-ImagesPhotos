@@ -17,7 +17,8 @@
 ## 효과 규칙
 - 전환 순서: 검정(black) → 페이드인 → 표시 → 페이드아웃.
 - 기본 타이밍(권장): 검정 1000ms, 페이드인 1000ms, 표시 5000ms, 페이드아웃 1000ms.
-- 효과 목록(권장): zoom, pan, fade, grayscale, sepia, rotate — 각 효과는 성능을 고려해 GPU에서 처리하도록 `transform`/`opacity` 사용.
+- 효과 목록(권장): zoom, pan(up/down/left/right), zoom-pan, fade, grayscale, sepia, rotate — 각 효과는 성능을 고려해 GPU에서 처리하도록 `transform`/`opacity` 사용.
+- **이동(Pan) 효과 규칙**: 이동 애니메이션 적용 시 이미지 가장자리가 보이지 않도록, `transform: scale(1.15)`와 같이 이미지를 미리 확대해야 함. 이동 거리는 확대된 여백 이내여야 함.
 - 애니메이션 지속시간은 이미지 표시 시간과 충돌하지 않도록 설정.
 - 배경색은 이미지의 평균 색을 사용하되, cross-origin 이미지의 경우 캔버스 읽기 실패가 발생할 수 있음.
   - 필요 시 이미지에 `crossOrigin = 'Anonymous'`를 설정하고 서버에 CORS 헤더(`Access-Control-Allow-Origin: *`)가 있는지 확인.

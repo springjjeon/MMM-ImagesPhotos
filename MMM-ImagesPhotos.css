@@ -78,11 +78,41 @@
   animation: ip-rotate 16s ease-in-out both;
 }
 
+.bgimage.ip-panup {
+  transform-origin: center center;
+  animation: ip-panup 20s linear both;
+}
+
+.bgimage.ip-pandown {
+  transform-origin: center center;
+  animation: ip-pandown 20s linear both;
+}
+
+.bgimage.ip-zoom-panright {
+  transform-origin: center center;
+  animation: ip-zoom-panright 20s linear both;
+}
+
+.bgimage.ip-zoom-panleft {
+  transform-origin: center center;
+  animation: ip-zoom-panleft 20s linear both;
+}
+
+.bgimage.ip-zoom-panup {
+  transform-origin: center center;
+  animation: ip-zoom-panup 20s linear both;
+}
+
+.bgimage.ip-zoom-pandown {
+  transform-origin: center center;
+  animation: ip-zoom-pandown 20s linear both;
+}
+
+
 /* Keyframes */
 @keyframes ip-zoom {
   0% { transform: scale(1); }
-  50% { transform: scale(1.08); }
-  100% { transform: scale(1); }
+  100% { transform: scale(1.08); }
 }
 
 @keyframes ip-fade {
@@ -93,15 +123,43 @@
 }
 
 @keyframes ip-panleft {
-  0% { transform: translateX(8%); }
-  50% { transform: translateX(0%); }
-  100% { transform: translateX(-8%); }
+  0% { transform: scale(1.15) translateX(7%); }
+  100% { transform: scale(1.15) translateX(-7%); }
 }
 
 @keyframes ip-panright {
-  0% { transform: translateX(-8%); }
-  50% { transform: translateX(0%); }
-  100% { transform: translateX(8%); }
+  0% { transform: scale(1.15) translateX(-7%); }
+  100% { transform: scale(1.15) translateX(7%); }
+}
+
+@keyframes ip-panup {
+  0% { transform: scale(1.15) translateY(5%); }
+  100% { transform: scale(1.15) translateY(-5%); }
+}
+
+@keyframes ip-pandown {
+  0% { transform: scale(1.15) translateY(-5%); }
+  100% { transform: scale(1.15) translateY(5%); }
+}
+
+@keyframes ip-zoom-panright {
+  0% { transform: scale(1.15) translateX(-7%); }
+  100% { transform: scale(1.24) translateX(7%); }
+}
+
+@keyframes ip-zoom-panleft {
+  0% { transform: scale(1.15) translateX(7%); }
+  100% { transform: scale(1.24) translateX(-7%); }
+}
+
+@keyframes ip-zoom-panup {
+  0% { transform: scale(1.15) translateY(5%); }
+  100% { transform: scale(1.24) translateY(-5%); }
+}
+
+@keyframes ip-zoom-pandown {
+  0% { transform: scale(1.15) translateY(-5%); }
+  100% { transform: scale(1.24) translateY(5%); }
 }
 
 @keyframes ip-grayscale {
