@@ -56,6 +56,7 @@ The entry in `config.js` can include the following options:
 | `updateInterval`   | How long before loading a new image.<br><br>**Type:** `int`(milliseconds) <br>Default 5000 milliseconds
 | `getInterval`      | Interval value to get new images from directory.<br><br>**Type:** `int`(milliseconds) <br>Default 60000 milliseconds
 | `sequential`       | true or false, whether to process the images randomly(default) or sequentially<br>Default false
+| `showExif`         | Shows a box with EXIF information (date, camera, location, etc.) on the image.<br>Set to `false` to disable.<br><br>**Type:** `boolean`<br>Default `true`
 | only when position is `NOT` fullscreen_below or fullscreen_above|
 | `maxWidth`         | Value for maximum width. Optional, possible values: absolute (e.g. "700px") or relative ("50%") <br> Default 100%
 | `maxHeight`        | Value for maximum height. Optional, possible values: absolute (e.g. "400px") or relative ("70%") <br> Default 100%

@@ -13,6 +13,43 @@ const path = require("path");
 const fs = require("fs");
 const mime = require("mime-types");
 const getAverageColor = require('fast-average-color-node');
+const exifParser = require("exif-parser");
+const https = require("https");
+
+async function reverseGeocode(lat, lon) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: "nominatim.openstreetmap.org",
+      path: `/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=ko`,
+      headers: {
+        "User-Agent": "MagicMirror/MMM-ImagesPhotos-Module"
+      }
+    };
+
+    const req = https.get(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      res.on("end", () => {
+        try {
+          const jsonData = JSON.parse(data);
+          if (jsonData && jsonData.error) {
+            reject(new Error(jsonData.error));
+          } else {
+            resolve(jsonData);
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    req.on("error", (e) => {
+      reject(e);
+    });
+  });
+}
 
 module.exports = NodeHelper.create({
   // Override start method.
@@ -68,20 +105,70 @@ module.exports = NodeHelper.create({
   },
 
   // Return photos-images by response in JSON format.
-  getPhotosImages(req, res, id) {
+  async getPhotosImages(req, res, id) {
     if (this.config[id].debug) {
       Log.log(`gpi id=${id}`);
     }
     const directoryImages = this.path_images[id];
 
     const imgs = this.getFiles(directoryImages, id);
-    const imagesPhotos = this.getImages(imgs, id).map((img) => {
+    const imagePromises = this.getImages(imgs, id).map(async (img) => {
       if (this.config[id].debug) {
         Log.log(`${id} have image=${img}`);
       }
-      return { url: `/MMM-ImagesPhotos/photo/${id}/${img}` };
+      const imagePath = path.join(directoryImages, img);
+      const photoObject = {
+        url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
+        exif: null,
+        location: null
+      };
+
+      // Only process EXIF and GPS if showExif is enabled
+      if (this.config[id].showExif) {
+        try {
+          const fileBuffer = fs.readFileSync(imagePath);
+          const parser = exifParser.create(fileBuffer);
+          photoObject.exif = parser.parse();
+          if (this.config[id].debug) {
+            if (photoObject.exif && photoObject.exif.gps && photoObject.exif.gps.Latitude) {
+              Log.log(`[MMM-ImagesPhotos] GPS data found for ${img}.`);
+            } else {
+              Log.log(`[MMM-ImagesPhotos] No GPS data for ${img}.`);
+            }
+          }
+        } catch (error) {
+          if (this.config[id].debug) {
+            Log.error(`Could not parse EXIF for ${img}:`, error.message);
+          }
+        }
+        
+        if (photoObject.exif && photoObject.exif.gps && photoObject.exif.gps.Latitude && photoObject.exif.gps.Longitude) {
+          try {
+            if (this.config[id].debug) {
+              Log.log(`Reverse geocoding for ${img}: ${photoObject.exif.gps.Latitude}, ${photoObject.exif.gps.Longitude}`);
+            }
+            const locationData = await reverseGeocode(photoObject.exif.gps.Latitude, photoObject.exif.gps.Longitude);
+            // Typically, we want a concise name. Let's try to find one.
+            // address object is structured with city, town, village etc.
+            const addr = locationData.address;
+            photoObject.location = addr.city || addr.town || addr.village || addr.county || locationData.display_name;
+
+          } catch (e) {
+            Log.error(`Could not reverse geocode for ${img}:`, e.message);
+          }
+        }
+      }
+
+      return photoObject;
     });
-    res.send(imagesPhotos);
+    
+    try {
+      const imagesPhotos = await Promise.all(imagePromises);
+      res.send(imagesPhotos);
+    } catch(e) {
+      Log.error(`Error processing images:`, e);
+      res.status(500).send([]);
+    }
   },
 
   // Return array with only images

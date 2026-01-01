@@ -26,7 +26,8 @@ Module.register(ourModuleName, {
     ,imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown"
-    ]
+    ],
+    showExif: true
   },
   // transition defaults (ms)
   transitionDefaults: {
@@ -350,6 +351,70 @@ Module.register(ourModuleName, {
       
       fg.appendChild(img);
       img.src = photoImage.url;
+
+      if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
+        const exifWrapper = document.createElement("div");
+        exifWrapper.className = "exif-info";
+
+        const infoParts = [];
+
+        if (photoImage.location) {
+            infoParts.push(`📍 ${photoImage.location}`);
+        }
+        
+        const timestamp = photoImage.exif.tags.DateTimeOriginal;
+        if (timestamp && typeof timestamp === 'number') {
+          const dateObj = new Date(timestamp * 1000);
+          const year = dateObj.getUTCFullYear();
+          const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getUTCDate()).padStart(2, '0');
+          const hour = String(dateObj.getUTCHours()).padStart(2, '0');
+          const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
+          infoParts.push(`🗓️ ${year}년 ${month}월 ${day}일 ${hour}시 ${minute}분`);
+        }
+
+        if (photoImage.exif.tags.Model) {
+            infoParts.push(`📷 ${photoImage.exif.tags.Model}`);
+        }
+
+        const photoParamParts = [];
+        const tags = photoImage.exif.tags;
+
+        if (tags.FocalLength) {
+            photoParamParts.push(`${tags.FocalLength}mm`);
+        }
+        if (tags.FNumber) {
+            photoParamParts.push(`f/${tags.FNumber.toFixed(1)}`);
+        }
+        if (tags.ExposureTime) {
+            const exposureTime = tags.ExposureTime;
+            if (exposureTime < 1) {
+                photoParamParts.push(`1/${Math.round(1 / exposureTime)}s`);
+            } else {
+                photoParamParts.push(`${exposureTime}s`);
+            }
+        }
+        if (tags.ISO) {
+            photoParamParts.push(`ISO ${tags.ISO}`);
+        }
+
+        if (photoParamParts.length > 0) {
+            infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
+        }
+
+        if (infoParts.length > 0) {
+            exifWrapper.style.position = "absolute";
+            exifWrapper.style.bottom = "10px";
+            exifWrapper.style.right = "10px";
+            exifWrapper.style.color = "white";
+            exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
+            exifWrapper.style.padding = "5px";
+            exifWrapper.style.borderRadius = "3px";
+            exifWrapper.style.zIndex = "3";
+            exifWrapper.innerHTML = infoParts.join('<br>');
+            fg.appendChild(exifWrapper);
+        }
+      }
     }
     return wrapper;
   },
@@ -426,6 +491,70 @@ Module.register(ourModuleName, {
         
         img.src = photoImage.url;
         this.fg.appendChild(img);
+
+        if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
+          const exifWrapper = document.createElement("div");
+          exifWrapper.className = "exif-info";
+
+          const infoParts = [];
+
+          if (photoImage.location) {
+              infoParts.push(`📍 ${photoImage.location}`);
+          }
+          
+          const timestamp = photoImage.exif.tags.DateTimeOriginal;
+          if (timestamp && typeof timestamp === 'number') {
+            const dateObj = new Date(timestamp * 1000);
+            const year = dateObj.getUTCFullYear();
+            const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getUTCDate()).padStart(2, '0');
+            const hour = String(dateObj.getUTCHours()).padStart(2, '0');
+            const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
+            infoParts.push(`🗓️ ${year}년 ${month}월 ${day}일 ${hour}시 ${minute}분`);
+          }
+
+          if (photoImage.exif.tags.Model) {
+              infoParts.push(`📷 ${photoImage.exif.tags.Model}`);
+          }
+
+          const photoParamParts = [];
+          const tags = photoImage.exif.tags;
+
+          if (tags.FocalLength) {
+              photoParamParts.push(`${tags.FocalLength}mm`);
+          }
+          if (tags.FNumber) {
+              photoParamParts.push(`f/${tags.FNumber.toFixed(1)}`);
+          }
+          if (tags.ExposureTime) {
+              const exposureTime = tags.ExposureTime;
+              if (exposureTime < 1) {
+                  photoParamParts.push(`1/${Math.round(1 / exposureTime)}s`);
+              } else {
+                  photoParamParts.push(`${exposureTime}s`);
+              }
+          }
+          if (tags.ISO) {
+              photoParamParts.push(`ISO ${tags.ISO}`);
+          }
+
+          if (photoParamParts.length > 0) {
+              infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
+          }
+
+          if (infoParts.length > 0) {
+              exifWrapper.style.position = "absolute";
+              exifWrapper.style.bottom = "10px";
+              exifWrapper.style.right = "10px";
+              exifWrapper.style.color = "white";
+              exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
+              exifWrapper.style.padding = "5px";
+              exifWrapper.style.borderRadius = "3px";
+              exifWrapper.style.zIndex = "3";
+              exifWrapper.innerHTML = infoParts.join('<br>');
+              this.fg.appendChild(exifWrapper);
+          }
+        }
       }
     }
     return this.wrapper;
