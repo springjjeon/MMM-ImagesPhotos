@@ -58,7 +58,7 @@ module.exports = NodeHelper.create({
 
   buildLocationString(address, displayName) {
     const locationParts = [];
-    const fields = ["road", "suburb", "city", "state", "country"];
+    const fields = ["road", "suburb", "village", "town", "city", "county", "state", "country"];
 
     fields.forEach((field) => {
       if (address[field]) {

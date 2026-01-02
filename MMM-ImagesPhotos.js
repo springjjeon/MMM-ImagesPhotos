@@ -407,14 +407,6 @@ Module.register(ourModuleName, {
         }
 
         if (infoParts.length > 0) {
-            exifWrapper.style.position = "absolute";
-            exifWrapper.style.bottom = "10px";
-            exifWrapper.style.right = "10px";
-            exifWrapper.style.color = "white";
-            exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
-            exifWrapper.style.padding = "5px";
-            exifWrapper.style.borderRadius = "10px";
-            exifWrapper.style.zIndex = "3";
             exifWrapper.innerHTML = infoParts.join('<br>');
             fg.appendChild(exifWrapper);
         }
@@ -550,14 +542,6 @@ Module.register(ourModuleName, {
           }
 
           if (infoParts.length > 0) {
-              exifWrapper.style.position = "absolute";
-              exifWrapper.style.bottom = "10px";
-              exifWrapper.style.right = "10px";
-              exifWrapper.style.color = "white";
-                          exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
-                          exifWrapper.style.padding = "5px";
-                          exifWrapper.style.borderRadius = "10px";
-                          exifWrapper.style.zIndex = "3";
                           exifWrapper.innerHTML = infoParts.join('<br>');
                           this.fg.appendChild(exifWrapper);          }
         }
