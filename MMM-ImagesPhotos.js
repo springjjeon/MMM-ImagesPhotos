@@ -27,7 +27,8 @@ Module.register(ourModuleName, {
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown"
     ],
-    showExif: true
+    showExif: true,
+    language: config.language
   },
   // transition defaults (ms)
   transitionDefaults: {
@@ -353,15 +354,14 @@ Module.register(ourModuleName, {
       img.src = photoImage.url;
 
       if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
+        if (this.config.debugToConsole) {
+          Log.log(`[MMM-ImagesPhotos] Photo location for getDomnotFS: ${photoImage.location}`);
+        }
         const exifWrapper = document.createElement("div");
         exifWrapper.className = "exif-info";
 
         const infoParts = [];
 
-        if (photoImage.location) {
-            infoParts.push(`📍 ${photoImage.location}`);
-        }
-        
         const timestamp = photoImage.exif.tags.DateTimeOriginal;
         if (timestamp && typeof timestamp === 'number') {
           const dateObj = new Date(timestamp * 1000);
@@ -370,7 +370,11 @@ Module.register(ourModuleName, {
           const day = String(dateObj.getUTCDate()).padStart(2, '0');
           const hour = String(dateObj.getUTCHours()).padStart(2, '0');
           const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
-          infoParts.push(`🗓️ ${year}년 ${month}월 ${day}일 ${hour}시 ${minute}분`);
+          infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
+        }
+
+        if (photoImage.location) {
+            infoParts.push(`📍 ${photoImage.location}`);
         }
 
         if (photoImage.exif.tags.Model) {
@@ -409,7 +413,7 @@ Module.register(ourModuleName, {
             exifWrapper.style.color = "white";
             exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
             exifWrapper.style.padding = "5px";
-            exifWrapper.style.borderRadius = "3px";
+            exifWrapper.style.borderRadius = "10px";
             exifWrapper.style.zIndex = "3";
             exifWrapper.innerHTML = infoParts.join('<br>');
             fg.appendChild(exifWrapper);
@@ -493,15 +497,14 @@ Module.register(ourModuleName, {
         this.fg.appendChild(img);
 
         if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
+          if (this.config.debugToConsole) {
+            Log.log(`[MMM-ImagesPhotos] Photo location for getDomFS: ${photoImage.location}`);
+          }
           const exifWrapper = document.createElement("div");
           exifWrapper.className = "exif-info";
 
           const infoParts = [];
 
-          if (photoImage.location) {
-              infoParts.push(`📍 ${photoImage.location}`);
-          }
-          
           const timestamp = photoImage.exif.tags.DateTimeOriginal;
           if (timestamp && typeof timestamp === 'number') {
             const dateObj = new Date(timestamp * 1000);
@@ -510,7 +513,11 @@ Module.register(ourModuleName, {
             const day = String(dateObj.getUTCDate()).padStart(2, '0');
             const hour = String(dateObj.getUTCHours()).padStart(2, '0');
             const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
-            infoParts.push(`🗓️ ${year}년 ${month}월 ${day}일 ${hour}시 ${minute}분`);
+            infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
+          }
+
+          if (photoImage.location) {
+              infoParts.push(`📍 ${photoImage.location}`);
           }
 
           if (photoImage.exif.tags.Model) {
@@ -547,13 +554,12 @@ Module.register(ourModuleName, {
               exifWrapper.style.bottom = "10px";
               exifWrapper.style.right = "10px";
               exifWrapper.style.color = "white";
-              exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
-              exifWrapper.style.padding = "5px";
-              exifWrapper.style.borderRadius = "3px";
-              exifWrapper.style.zIndex = "3";
-              exifWrapper.innerHTML = infoParts.join('<br>');
-              this.fg.appendChild(exifWrapper);
-          }
+                          exifWrapper.style.backgroundColor = "rgba(0,0,0,0.5)";
+                          exifWrapper.style.padding = "5px";
+                          exifWrapper.style.borderRadius = "10px";
+                          exifWrapper.style.zIndex = "3";
+                          exifWrapper.innerHTML = infoParts.join('<br>');
+                          this.fg.appendChild(exifWrapper);          }
         }
       }
     }

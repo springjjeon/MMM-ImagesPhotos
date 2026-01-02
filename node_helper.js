@@ -7,7 +7,7 @@
  */
 
 const express = require("express");
-const Log = require("logger");
+const console = require("console");
 const NodeHelper = require("node_helper");
 const path = require("path");
 const fs = require("fs");
@@ -16,11 +16,11 @@ const getAverageColor = require('fast-average-color-node');
 const exifParser = require("exif-parser");
 const https = require("https");
 
-async function reverseGeocode(lat, lon) {
+async function reverseGeocode(lat, lon, language) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: "nominatim.openstreetmap.org",
-      path: `/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=ko`,
+      path: `/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=${language}`,
       headers: {
         "User-Agent": "MagicMirror/MMM-ImagesPhotos-Module"
       }
@@ -55,28 +55,42 @@ module.exports = NodeHelper.create({
   // Override start method.
   config: {},
   path_images: {},
+
+  buildLocationString(address, displayName) {
+    const locationParts = [];
+    const fields = ["road", "suburb", "city", "state", "country"];
+
+    fields.forEach((field) => {
+      if (address[field]) {
+        locationParts.push(address[field]);
+      }
+    });
+
+    if (locationParts.length > 0) {
+      return locationParts.join(", ");
+    }
+
+    return displayName;
+  },
+  
   start() {
-    Log.log(`Starting node helper for: ${this.name}`);
+    console.log(`Starting node helper for: ${this.name}`);
   },
 
   setConfig(id) {
-    if (this.config[id].debug) {
-      Log.log(`setconfig path=${id}`);
-    }
+    console.log(`setconfig path=${id}`);
     this.path_images[id] = path.resolve(
       global.root_path,
       "modules/MMM-ImagesPhotos/uploads",
       this.config[id].path
     );
-    if (this.config[id].debug) {
-      Log.log(`path for : ${this.name} ${id}= ${this.path_images[id]}`);
-    }
+    console.log(`path for : ${this.name} ${id}= ${this.path_images[id]}`);
   },
 
   // Override socketNotificationReceived method.
   socketNotificationReceived(notification, payload) {
     if (notification === "CONFIG") {
-      Log.log(`Config based debug=${payload.id}`);
+      console.log(`Config based debug=${payload.id}`);
       this.config[payload.id] = payload;
       this.setConfig(payload.id);
       this.extraRoutes(payload.id);
@@ -89,9 +103,7 @@ module.exports = NodeHelper.create({
    * Recive request and send response
    */
   extraRoutes(id) {
-    if (this.config[id].debug) {
-      Log.log(`setting path=${id}`);
-    }
+    console.log(`setting path=${id}`);
     const self = this;
 
     this.expressApp.get(`/MMM-ImagesPhotos/photos/${id}`, (req, res) => {
@@ -106,16 +118,12 @@ module.exports = NodeHelper.create({
 
   // Return photos-images by response in JSON format.
   async getPhotosImages(req, res, id) {
-    if (this.config[id].debug) {
-      Log.log(`gpi id=${id}`);
-    }
+    console.log(`gpi id=${id}`);
     const directoryImages = this.path_images[id];
 
     const imgs = this.getFiles(directoryImages, id);
     const imagePromises = this.getImages(imgs, id).map(async (img) => {
-      if (this.config[id].debug) {
-        Log.log(`${id} have image=${img}`);
-      }
+      console.log(`${id} have image=${img}`);
       const imagePath = path.join(directoryImages, img);
       const photoObject = {
         url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
@@ -129,32 +137,25 @@ module.exports = NodeHelper.create({
           const fileBuffer = fs.readFileSync(imagePath);
           const parser = exifParser.create(fileBuffer);
           photoObject.exif = parser.parse();
-          if (this.config[id].debug) {
-            if (photoObject.exif && photoObject.exif.gps && photoObject.exif.gps.Latitude) {
-              Log.log(`[MMM-ImagesPhotos] GPS data found for ${img}.`);
-            } else {
-              Log.log(`[MMM-ImagesPhotos] No GPS data for ${img}.`);
-            }
+          if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude) {
+            console.log(`[MMM-ImagesPhotos] GPS data found for ${img}.`);
+          } else {
+            console.log(`[MMM-ImagesPhotos] No GPS data for ${img}.`);
           }
         } catch (error) {
-          if (this.config[id].debug) {
-            Log.error(`Could not parse EXIF for ${img}:`, error.message);
-          }
+          console.error(`Could not parse EXIF for ${img}:`, error.message);
         }
         
-        if (photoObject.exif && photoObject.exif.gps && photoObject.exif.gps.Latitude && photoObject.exif.gps.Longitude) {
+        if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
           try {
-            if (this.config[id].debug) {
-              Log.log(`Reverse geocoding for ${img}: ${photoObject.exif.gps.Latitude}, ${photoObject.exif.gps.Longitude}`);
-            }
-            const locationData = await reverseGeocode(photoObject.exif.gps.Latitude, photoObject.exif.gps.Longitude);
-            // Typically, we want a concise name. Let's try to find one.
-            // address object is structured with city, town, village etc.
-            const addr = locationData.address;
-            photoObject.location = addr.city || addr.town || addr.village || addr.county || locationData.display_name;
+            const locationData = await reverseGeocode(photoObject.exif.tags.GPSLatitude, photoObject.exif.tags.GPSLongitude, this.config[id].language);
 
+            if (locationData && locationData.address) {
+              photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
+              console.log(`[MMM-ImagesPhotos] Constructed location for ${img}:`, photoObject.location);
+            }
           } catch (e) {
-            Log.error(`Could not reverse geocode for ${img}:`, e.message);
+            console.error(`Could not reverse geocode for ${img}:`, e.message);
           }
         }
       }
@@ -166,16 +167,14 @@ module.exports = NodeHelper.create({
       const imagesPhotos = await Promise.all(imagePromises);
       res.send(imagesPhotos);
     } catch(e) {
-      Log.error(`Error processing images:`, e);
+      console.error(`Error processing images:`, e);
       res.status(500).send([]);
     }
   },
 
   // Return array with only images
   getImages(files, id) {
-    if (this.config[id].debug) {
-      Log.log(`gp id=${id}`);
-    }
+    console.log(`gp id=${id}`);
     const images = [];
     const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/heic"];
 
@@ -192,21 +191,15 @@ module.exports = NodeHelper.create({
   },
 
   getFiles(filePath, id) {
-    if (this.config[id].debug) {
-      Log.log(`gf id=${id}`);
-    }
+    console.log(`gf id=${id}`);
     let files = [];
     const folders = [];
     try {
-      // Log.log("finding files on path="+path)
+      // console.log("finding files on path="+path)
       files = fs.readdirSync(filePath).filter((file) => {
-        if (this.config[id].debug) {
-          Log.log(`found file=${file} on path=${filePath}`);
-        }
+        console.log(`found file=${file} on path=${filePath}`);
         if (fs.statSync(`${filePath}/${file}`).isDirectory()) {
-          if (this.config[id].debug) {
-            Log.log(`${id} saving folder path=${filePath}/${file}`);
-          }
+          console.log(`${id} saving folder path=${filePath}/${file}`);
           folders.push(`${filePath}/${file}`);
         } else if (!file.startsWith(".")) {
           return file;
@@ -214,11 +207,9 @@ module.exports = NodeHelper.create({
       });
 
       folders.forEach((x) => {
-        if (this.config[id].debug) {
-          Log.log(`${id} processing for sub folder=${x}`);
-        }
+        console.log(`${id} processing for sub folder=${x}`);
         const y = this.getFiles(x, id);
-        // Log.log("list"+JSON.stringify(y))
+        // console.log("list"+JSON.stringify(y))
         const worklist = [];
         // Get the number of elements in the base path
         const c = this.path_images[id].split("/").length;
@@ -238,20 +229,16 @@ module.exports = NodeHelper.create({
         });
         // Add to the files list
         files = files.concat(worklist);
-        if (this.config[id].debug) {
-          Log.log(`files after concat=${JSON.stringify(files)}`);
-        }
+        console.log(`files after concat=${JSON.stringify(files)}`);
       });
     } catch (exception) {
-      Log.log(
+      console.log(
         `getfiles unable to access source folder,path=${filePath} will retry, exception=${JSON.stringify(
           exception
         )}`
       );
     }
-    if (this.config[id].debug) {
-      Log.log(`${id} returning files=${JSON.stringify(files)}`);
-    }
+    console.log(`${id} returning files=${JSON.stringify(files)}`);
 
     return files;
   }
