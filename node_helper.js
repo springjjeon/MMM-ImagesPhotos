@@ -15,6 +15,7 @@ const mime = require("mime-types");
 const getAverageColor = require('fast-average-color-node');
 const exifParser = require("exif-parser");
 const https = require("https");
+const { spawn } = require("child_process");
 
 async function reverseGeocode(lat, lon, language) {
   return new Promise((resolve, reject) => {
@@ -72,6 +73,49 @@ module.exports = NodeHelper.create({
 
     return displayName;
   },
+
+  async runFaceDetection(imagePath, id) {
+    return new Promise((resolve, reject) => {
+      if (!this.config[id].faceDetectionScript) {
+        resolve(null);
+        return;
+      }
+
+      const python = spawn("python", [this.config[id].faceDetectionScript, imagePath]);
+      let dataString = "";
+      let errorString = "";
+
+      python.stdout.on("data", (data) => {
+        dataString += data.toString();
+      });
+
+      python.stderr.on("data", (data) => {
+        errorString += data.toString();
+      });
+
+      python.on("close", (code) => {
+        if (code !== 0) {
+          console.error(`[MMM-ImagesPhotos] Face detection script for ${imagePath} exited with code ${code}: ${errorString}`);
+          resolve(null);
+        } else {
+          try {
+            const faceData = JSON.parse(dataString);
+            console.log(`[MMM-ImagesPhotos] Face detection result for ${imagePath}:`, JSON.stringify(faceData));
+            resolve(faceData);
+          } catch (e) {
+            console.error(`[MMM-ImagesPhotos] Face detection - Invalid JSON from script for ${imagePath}: ${dataString}`);
+            resolve(null);
+          }
+        }
+      });
+
+      python.on("error", (err) => {
+        console.error(`[MMM-ImagesPhotos] Failed to start face detection script for ${imagePath}`, err);
+        resolve(null); // Resolve with null to avoid breaking Promise.all
+      });
+    });
+  },
+
   
   start() {
     console.log(`Starting node helper for: ${this.name}`);
@@ -88,13 +132,56 @@ module.exports = NodeHelper.create({
   },
 
   // Override socketNotificationReceived method.
-  socketNotificationReceived(notification, payload) {
+  async socketNotificationReceived(notification, payload) {
     if (notification === "CONFIG") {
       console.log(`Config based debug=${payload.id}`);
       this.config[payload.id] = payload;
       this.setConfig(payload.id);
       this.extraRoutes(payload.id);
       this.sendSocketNotification("READY", payload.id);
+    }
+    if (notification === "GET_METADATA") {
+      const { id, photo } = payload;
+      const directoryImages = this.path_images[id];
+      const imagePath = path.join(directoryImages, photo.path);
+
+      const photoObject = {
+        ...photo,
+        exif: null,
+        location: null,
+        face: null
+      };
+
+      try {
+        // Process EXIF and GPS if enabled
+        if (this.config[id].showExif) {
+          try {
+            const fileBuffer = fs.readFileSync(imagePath);
+            const parser = exifParser.create(fileBuffer);
+            photoObject.exif = parser.parse();
+          } catch (error) {
+            console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
+          }
+
+          if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
+            try {
+              const locationData = await reverseGeocode(photoObject.exif.tags.GPSLatitude, photoObject.exif.tags.GPSLongitude, this.config[id].language);
+              if (locationData && locationData.address) {
+                photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
+              }
+            } catch (e) {
+              console.error(`[MMM-ImagesPhotos] Could not reverse geocode for ${photo.path}:`, e.message);
+            }
+          }
+        }
+
+        // Process face detection
+        photoObject.face = await this.runFaceDetection(imagePath, id);
+
+        this.sendSocketNotification("METADATA_RESPONSE", { id: id, photo: photoObject });
+      } catch (e) {
+        console.error(`[MMM-ImagesPhotos] Error processing metadata for ${photo.path}:`, e);
+      }
     }
   },
 
@@ -117,59 +204,17 @@ module.exports = NodeHelper.create({
   },
 
   // Return photos-images by response in JSON format.
-  async getPhotosImages(req, res, id) {
+  getPhotosImages(req, res, id) {
     console.log(`gpi id=${id}`);
     const directoryImages = this.path_images[id];
 
-    const imgs = this.getFiles(directoryImages, id);
-    const imagePromises = this.getImages(imgs, id).map(async (img) => {
-      console.log(`${id} have image=${img}`);
-      const imagePath = path.join(directoryImages, img);
-      const photoObject = {
-        url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
-        exif: null,
-        location: null
-      };
-
-      // Only process EXIF and GPS if showExif is enabled
-      if (this.config[id].showExif) {
-        try {
-          const fileBuffer = fs.readFileSync(imagePath);
-          const parser = exifParser.create(fileBuffer);
-          photoObject.exif = parser.parse();
-          if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude) {
-            console.log(`[MMM-ImagesPhotos] GPS data found for ${img}.`);
-          } else {
-            console.log(`[MMM-ImagesPhotos] No GPS data for ${img}.`);
-          }
-        } catch (error) {
-          console.error(`Could not parse EXIF for ${img}:`, error.message);
-        }
-        
-        if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
-          try {
-            const locationData = await reverseGeocode(photoObject.exif.tags.GPSLatitude, photoObject.exif.tags.GPSLongitude, this.config[id].language);
-
-            if (locationData && locationData.address) {
-              photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
-              console.log(`[MMM-ImagesPhotos] Constructed location for ${img}:`, photoObject.location);
-            }
-          } catch (e) {
-            console.error(`Could not reverse geocode for ${img}:`, e.message);
-          }
-        }
-      }
-
-      return photoObject;
-    });
+    const imgs = this.getImages(this.getFiles(directoryImages, id), id);
     
-    try {
-      const imagesPhotos = await Promise.all(imagePromises);
-      res.send(imagesPhotos);
-    } catch(e) {
-      console.error(`Error processing images:`, e);
-      res.status(500).send([]);
-    }
+    const initialPhotos = imgs.map((img) => ({
+      url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
+      path: img // Keep the relative path for requests
+    }));
+    res.send(initialPhotos);
   },
 
   // Return array with only images

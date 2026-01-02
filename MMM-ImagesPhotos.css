@@ -108,11 +108,52 @@
   animation: ip-zoom-pandown 20s linear both;
 }
 
+.bgimage.ip-face-zoom-in {
+  transform-origin: center center;
+  animation: ip-face-zoom-in 20s ease-in-out both;
+}
+
+.bgimage.ip-face-zoom-out {
+  transform-origin: center center;
+  animation: ip-face-zoom-out 20s ease-in-out both;
+}
+
+.bgimage.ip-pan-diag-tl-br {
+  transform-origin: center center;
+  animation: ip-pan-diag-tl-br 20s linear both;
+}
+.bgimage.ip-pan-diag-tr-bl {
+  transform-origin: center center;
+  animation: ip-pan-diag-tr-bl 20s linear both;
+}
+.bgimage.ip-pan-diag-bl-tr {
+  transform-origin: center center;
+  animation: ip-pan-diag-bl-tr 20s linear both;
+}
+.bgimage.ip-pan-diag-br-tl {
+  transform-origin: center center;
+  animation: ip-pan-diag-br-tl 20s linear both;
+}
+
+.bgimage.ip-still {
+  animation: ip-still 20s ease-in-out both;
+}
+
 
 /* Keyframes */
 @keyframes ip-zoom {
   0% { transform: scale(1); }
   100% { transform: scale(1.08); }
+}
+
+@keyframes ip-face-zoom-in {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+@keyframes ip-face-zoom-out {
+  0% { transform: scale(1.15); }
+  100% { transform: scale(1); }
 }
 
 @keyframes ip-fade {
@@ -144,22 +185,44 @@
 
 @keyframes ip-zoom-panright {
   0% { transform: scale(1.15) translateX(-7%); }
-  100% { transform: scale(1.24) translateX(7%); }
+  100% { transform: scale(1.15) translateX(7%); }
 }
 
 @keyframes ip-zoom-panleft {
   0% { transform: scale(1.15) translateX(7%); }
-  100% { transform: scale(1.24) translateX(-7%); }
+  100% { transform: scale(1.15) translateX(-7%); }
 }
 
 @keyframes ip-zoom-panup {
   0% { transform: scale(1.15) translateY(5%); }
-  100% { transform: scale(1.24) translateY(-5%); }
+  100% { transform: scale(1.15) translateY(-5%); }
 }
 
 @keyframes ip-zoom-pandown {
   0% { transform: scale(1.15) translateY(-5%); }
-  100% { transform: scale(1.24) translateY(5%); }
+  100% { transform: scale(1.15) translateY(5%); }
+}
+
+@keyframes ip-pan-diag-tl-br {
+  0% { transform: scale(1.15) translate(-7%, -5%); }
+  100% { transform: scale(1.15) translate(7%, 5%); }
+}
+@keyframes ip-pan-diag-tr-bl {
+  0% { transform: scale(1.15) translate(7%, -5%); }
+  100% { transform: scale(1.15) translate(-7%, 5%); }
+}
+@keyframes ip-pan-diag-bl-tr {
+  0% { transform: scale(1.15) translate(-7%, 5%); }
+  100% { transform: scale(1.15) translate(7%, -5%); }
+}
+@keyframes ip-pan-diag-br-tl {
+  0% { transform: scale(1.15) translate(7%, 5%); }
+  100% { transform: scale(1.15) translate(-7%, -5%); }
+}
+
+@keyframes ip-still {
+  0% { transform: scale(1); }
+  100% { transform: scale(1); }
 }
 
 @keyframes ip-grayscale {

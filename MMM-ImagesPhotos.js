@@ -25,7 +25,10 @@ Module.register(ourModuleName, {
     ,debugToConsole: true
     ,imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
-      "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown"
+      "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
+      "ip-pan-diag-tl-br", "ip-pan-diag-tr-bl", "ip-pan-diag-bl-tr", "ip-pan-diag-br-tl",
+      "ip-still",
+      "ip-face-zoom"
     ],
     showExif: true,
     language: config.language
@@ -42,13 +45,15 @@ Module.register(ourModuleName, {
   suspended: false,
   timer: null,
   fullscreen: false,
+  photos: [],
+  currentPhoto: null,
+  nextPhoto: null,
+  lastPhotoIndex: -1,
 
   requiresVersion: "2.24.0", // Required version of MagicMirror
 
   start() {
-    this.photos = [];
     this.loaded = false;
-    this.lastPhotoIndex = -1;
     this.config.id = this.identifier;
     this.sendSocketNotification("CONFIG", this.config);
     // Explicit startup log for terminal visibility
@@ -64,32 +69,24 @@ Module.register(ourModuleName, {
    */
   async getPhotos() {
     const urlApHelper = `/MMM-ImagesPhotos/photos/${this.identifier}`;
-    const self = this;
-    let retry = true;
-
     try {
-      const photosResponse = await fetch(urlApHelper);
-
-      if (photosResponse.ok) {
-        const photosData = await photosResponse.json();
-        self.processPhotos(photosData);
-      } else if (photosResponse.status === 401) {
-        self.updateDom(self.config.animationSpeed);
-        Log.error(self.name, photosResponse.status);
-        retry = false;
-      } else {
-        Log.error(self.name, "Could not load photos.");
-      }
-
-      if (!photosResponse.ok) {
-        if (retry) {
-          self.scheduleUpdate(self.loaded ? -1 : self.config.retryDelay);
+      const response = await fetch(urlApHelper);
+      if (response.ok) {
+        this.photos = await response.json();
+        this.loaded = true;
+        if (this.photos.length > 0) {
+          this.prepareNextPhoto(); // Start the process by preparing the first photo
         }
+      } else {
+        Log.error(this.name, "Could not load photos.");
+        this.scheduleUpdate(this.config.retryDelay);
       }
     } catch (error) {
-      Log.error(self.name, error);
+      Log.error(this.name, error);
+      this.scheduleUpdate(this.config.retryDelay);
     }
   },
+
   notificationReceived(notification, payload, sender) {
     // Hook to turn off messages about notiofications, clock once a second
     if (notification === "ALL_MODULES_STARTED") {
@@ -102,11 +99,31 @@ Module.register(ourModuleName, {
     }
   },
   
-  socketNotificationReceived(notification, payload, source) {
+  socketNotificationReceived(notification, payload) {
     if (notification === "READY" && payload === this.identifier) {
-      // Schedule update timer.
       this.getPhotos();
     }
+    if (notification === "METADATA_RESPONSE" && payload.id === this.identifier) {
+      if (this.config.debugToConsole) {
+        Log.log(`[MMM-ImagesPhotos] METADATA_RESPONSE received for: ${payload.photo.path}`);
+      }
+      this.nextPhoto = payload.photo;
+      if (!this.currentPhoto) {
+        // If this is the first photo, display it immediately
+        this.updateDom(this.config.animationSpeed);
+      }
+    }
+  },
+
+  prepareNextPhoto() {
+    if (this.photos.length === 0) {
+      return;
+    }
+    const nextPhoto = this.randomPhoto();
+    if (this.config.debugToConsole) {
+      Log.log(`[MMM-ImagesPhotos] prepareNextPhoto: requesting metadata for: ${nextPhoto.path}`);
+    }
+    this.sendSocketNotification("GET_METADATA", { id: this.identifier, photo: nextPhoto });
   },
 
   /*
@@ -145,6 +162,10 @@ Module.register(ourModuleName, {
       this.lastPhotoIndex === photos.length - 1 ? 0 : this.lastPhotoIndex + 1;
     if (!this.config.sequential) {
       photoIndex = generate();
+      // Ensure the next random photo is not the same as the current one
+      while (photoIndex === this.lastPhotoIndex) {
+        photoIndex = generate();
+      }
     }
     this.lastPhotoIndex = photoIndex;
 
@@ -301,6 +322,31 @@ Module.register(ourModuleName, {
   },
 
   getDom() {
+    if (!this.nextPhoto && this.loaded) {
+      // Data for the next photo is not ready yet.
+      const wrapper = document.createElement("div");
+      if(this.config.debugToConsole) {
+        wrapper.innerText = "Preparing next photo...";
+      }
+      return wrapper;
+    }
+    
+    if (!this.nextPhoto && !this.loaded) {
+		const wrapper = document.createElement("div");
+		wrapper.innerHTML = this.translate("LOADING");
+		wrapper.className = "dimmed light small";
+		return wrapper;
+	}
+
+    // Promote next photo to current and prepare the next one in the background
+    this.currentPhoto = JSON.parse(JSON.stringify(this.nextPhoto)); // Deep copy to prevent race conditions
+    this.nextPhoto = null;
+
+    if (this.config.debugToConsole) {
+      Log.log(`[MMM-ImagesPhotos] getDom: RENDERING CURRENT PHOTO: ${JSON.stringify(this.currentPhoto)}`);
+    }
+    this.prepareNextPhoto();
+
     if (this.fullscreen) {
       return this.getDomFS();
     }
@@ -315,9 +361,7 @@ Module.register(ourModuleName, {
     wrapper.style.width = "100%";
     wrapper.style.height = "100%";
     wrapper.style.overflow = "hidden";
-    wrapper.style.backgroundColor = "black";
-    
-    const photoImage = this.randomPhoto();
+    const photoImage = this.currentPhoto;
 
     if (photoImage) {
       // Create a foreground container for the image, this is what will be faded
@@ -334,9 +378,79 @@ Module.register(ourModuleName, {
       img.style.opacity = this.config.opacity;
       
       // Add random animation effect
-      const effects = this.config.imageEffects;
-      const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-      img.className = "bgimage mmip-bgimage " + randomEffect;
+      let finalEffect = "";
+      let isFaceZoom = false;
+
+      // Decide if we should do a face zoom (30% chance if faces are present)
+      if (this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
+        if (Math.random() < 0.4) { // <-- Probability changed to 40%
+          isFaceZoom = true;
+        }
+      }
+
+      if (isFaceZoom) {
+        const faces = photoImage.face.faces;
+        const face = faces[Math.floor(Math.random() * faces.length)]; // Pick a random face
+        
+        const zoomIn = Math.random() < 0.5;
+        if (zoomIn) { // Apply pan-zoom for zoom-in
+          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+          const S = 1.15; // <-- Scale reverted to 1.15
+
+          const fx = fx_perc - 0.5;
+          const fy = fy_perc - 0.5;
+          const Dx = 0; 
+          const Dy = 0.3 - 0.5;
+          
+          let Tx = (Dx - S * fx) * 100;
+          let Ty = (Dy - S * fy) * 100;
+
+          // Cap the translation to 15%
+          Tx = Math.max(-15, Math.min(15, Tx)); // <-- Capping re-introduced
+          Ty = Math.max(-15, Math.min(15, Ty));
+          
+          const duration = (20 + Math.random() * 20).toFixed(2);
+          const keyframeName = `face-pan-zoom-${Date.now()}`;
+          const keyframe = `
+            @keyframes ${keyframeName} {
+              0% { transform: translate(0%, 0%) scale(1); }
+              100% { transform: translate(${Tx}%, ${Ty}%) scale(${S}); }
+            }
+          `;
+          
+          const styleEl = document.createElement("style");
+          styleEl.innerHTML = keyframe;
+          document.head.appendChild(styleEl);
+
+          img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
+          finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
+
+          img.addEventListener("animationend", () => {
+            if(styleEl.parentNode) styleEl.remove();
+          }, { once: true });
+
+        } else { // Apply simple zoom-out, centered on the face
+          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+          img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
+          img.className = "bgimage mmip-bgimage ip-face-zoom-out";
+          finalEffect = `ip-face-zoom-out`;
+          const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+          img.style.animationDuration = randomDuration;
+        }
+      } else {
+        // Fallback to a regular effect
+        const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
+        const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
+        finalEffect = randomEffect;
+        img.className = "bgimage mmip-bgimage " + randomEffect;
+        const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+        img.style.animationDuration = randomDuration;
+        finalEffect += ` ${randomDuration}`;
+      }
+      Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);
+      photoImage.effect = finalEffect;
 
       // Attach handlers before src for cached images
       img.onerror = (evt) => {
@@ -355,12 +469,17 @@ Module.register(ourModuleName, {
 
       if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
         if (this.config.debugToConsole) {
-          Log.log(`[MMM-ImagesPhotos] Photo location for getDomnotFS: ${photoImage.location}`);
+          Log.log(`[MMM-ImagesPhotos] Building EXIF box for ${photoImage.url} with face count: ${photoImage.face ? photoImage.face.count : 'N/A'}`);
         }
         const exifWrapper = document.createElement("div");
         exifWrapper.className = "exif-info";
 
         const infoParts = [];
+
+        if (photoImage.path) {
+          const filename = photoImage.path.split("/").pop();
+          infoParts.push(`💾 ${filename}`);
+        }
 
         const timestamp = photoImage.exif.tags.DateTimeOriginal;
         if (timestamp && typeof timestamp === 'number') {
@@ -406,6 +525,14 @@ Module.register(ourModuleName, {
             infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
         }
 
+        if (photoImage.effect) {
+          let effectString = `✨ ${photoImage.effect}`;
+          if (photoImage.face && photoImage.face.count > 0) {
+            effectString += ` (${photoImage.face.count}👤)`;
+          }
+          infoParts.push(effectString);
+        }
+
         if (infoParts.length > 0) {
             exifWrapper.innerHTML = infoParts.join('<br>');
             fg.appendChild(exifWrapper);
@@ -439,7 +566,7 @@ Module.register(ourModuleName, {
     }
 
     if (this.photos.length) {
-      const photoImage = this.randomPhoto();
+      const photoImage = this.currentPhoto;
       if (photoImage) {
         // Clear previous image if any
         while (self.fg.firstChild) {
@@ -449,9 +576,79 @@ Module.register(ourModuleName, {
         const img = document.createElement("img");
         
         // Add random animation effect
-        const effects = this.config.imageEffects;
-        const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-        img.className = "bgimage mmip-bgimage " + randomEffect;
+        let finalEffect = "";
+        let isFaceZoom = false;
+
+        // Decide if we should do a face zoom (30% chance if faces are present)
+                if (this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
+                  if (Math.random() < 0.4) { // <-- Probability changed to 40%
+                    isFaceZoom = true;
+                  }
+                }
+        
+                if (isFaceZoom) {
+                  const faces = photoImage.face.faces;
+                  const face = faces[Math.floor(Math.random() * faces.length)]; // Pick a random face
+                  
+                  const zoomIn = Math.random() < 0.5;
+                  if (zoomIn) { // Apply pan-zoom for zoom-in
+                    const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+                    const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+                    const S = 1.15; // <-- Scale reverted to 1.15
+        
+                    const fx = fx_perc - 0.5;
+                    const fy = fy_perc - 0.5;
+                    const Dx = 0; 
+                    const Dy = 0.3 - 0.5;
+                    
+                    let Tx = (Dx - S * fx) * 100;
+                    let Ty = (Dy - S * fy) * 100;
+        
+                    // Cap the translation to 15%
+                    Tx = Math.max(-15, Math.min(15, Tx)); // <-- Capping re-introduced
+                    Ty = Math.max(-15, Math.min(15, Ty));
+                    
+                    const duration = (20 + Math.random() * 20).toFixed(2);
+                    const keyframeName = `face-pan-zoom-${Date.now()}`;
+                    const keyframe = `
+                      @keyframes ${keyframeName} {
+                        0% { transform: translate(0%, 0%) scale(1); }
+                        100% { transform: translate(${Tx}%, ${Ty}%) scale(${S}); }
+                      }
+                    `;
+                    
+                    const styleEl = document.createElement("style");
+                    styleEl.innerHTML = keyframe;
+                    document.head.appendChild(styleEl);
+        
+                    img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
+                    finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
+        
+                    img.addEventListener("animationend", () => {
+                      if(styleEl.parentNode) styleEl.remove();
+                    }, { once: true });
+        
+                  } else { // Apply simple zoom-out, centered on the face
+                    const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+                    const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+                    img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
+                    img.className = "bgimage mmip-bgimage ip-face-zoom-out";
+                    finalEffect = `ip-face-zoom-out`;
+                    const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+                    img.style.animationDuration = randomDuration;
+                  }
+        } else {
+          // Fallback to a regular effect
+          const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
+          const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
+          finalEffect = randomEffect;
+          img.className = "bgimage mmip-bgimage " + randomEffect;
+          const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+          img.style.animationDuration = randomDuration;
+          finalEffect += ` ${randomDuration}`;
+        }
+        Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);
+        photoImage.effect = finalEffect;
 
         img.style.position = "absolute";
         // Image is always visible within its container, we fade the container
@@ -490,12 +687,17 @@ Module.register(ourModuleName, {
 
         if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
           if (this.config.debugToConsole) {
-            Log.log(`[MMM-ImagesPhotos] Photo location for getDomFS: ${photoImage.location}`);
+            Log.log(`[MMM-ImagesPhotos] Building EXIF box for ${photoImage.url} with face count: ${photoImage.face ? photoImage.face.count : 'N/A'}`);
           }
           const exifWrapper = document.createElement("div");
           exifWrapper.className = "exif-info";
 
           const infoParts = [];
+
+          if (photoImage.path) {
+            const filename = photoImage.path.split("/").pop();
+            infoParts.push(`💾 ${filename}`);
+          }
 
           const timestamp = photoImage.exif.tags.DateTimeOriginal;
           if (timestamp && typeof timestamp === 'number') {
@@ -539,6 +741,14 @@ Module.register(ourModuleName, {
 
           if (photoParamParts.length > 0) {
               infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
+          }
+
+          if (photoImage.effect) {
+            let effectString = `✨ ${photoImage.effect}`;
+            if (photoImage.face && photoImage.face.count > 0) {
+              effectString += ` (${photoImage.face.count}👤)`;
+            }
+            infoParts.push(effectString);
           }
 
           if (infoParts.length > 0) {
