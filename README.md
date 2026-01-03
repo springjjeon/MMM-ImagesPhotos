@@ -1,100 +1,115 @@
 # MMM-ImagesPhotos
 
-This is a module for the [MagicMirror²](https://github.com/MichMich/MagicMirror). It will show photos from a directory.
-
-This module reads the images from the _uploads_ directory inside the module.
-**Directory**: `~/MagicMirror/modules/MMM-ImagesPhotos/uploads`
-
-## Installation
-
-1. Clone this repository inside your MagicMirror's `modules` folder
-
-```bash
-cd ~/MagicMirror/modules
-git clone https://github.com/springjjeon/MMM-ImagesPhotos
-cd MMM-ImagesPhotos
-npm install
-```
-
-## How it looks
+This is a module for the [MagicMirror²](https://github.com/MichMich/MagicMirror). It displays photos from a local directory with smooth transitions and optional face detection-based animations.
 
 ![Demo](.github/animate.gif)
 
-## Development Guidelines
+## Installation
 
-See the module-specific development and style guide in `VIBE-CODING.md`.
+1.  Navigate to your MagicMirror's `modules` folder.
+2.  Clone this repository:
+    ```bash
+    git clone https://github.com/sdetweil/MMM-ImagesPhotos.git
+    ```
+3.  Go into the newly created directory and install the dependencies:
+    ```bash
+    cd MMM-ImagesPhotos
+    npm install
+    ```
+
+### Face Detection (Optional)
+
+This module can use face detection to apply intelligent pan and zoom animations to your photos (a "Ken Burns" effect). To enable this, you need to set up the Python environment.
+
+1.  **Install Python dependencies:**
+    The face detection script requires `numpy` and `opencv-python`. Install them using `pip`:
+    ```bash
+    pip install numpy opencv-python
+    ```
+
+2.  **Configure the Haar Cascade file:**
+    The Python script `faceDetection/faceDetection.py` needs a path to a model file for detecting faces. The script currently has a hardcoded path that will likely not work on your system.
+
+    You must edit `faceDetection/faceDetection.py` and provide the correct path to `haarcascade_frontalface_default.xml`.
+
+    *   You can find this file in the OpenCV library you installed. Search for it on your system.
+    *   For example, on a Raspberry Pi with OpenCV installed, it might be located at `/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml`.
+
+    Open `faceDetection/faceDetection.py` and change this line to the correct path on your system:
+    ```python
+    # Line 5 in faceDetection/faceDetection.py
+    faceCascade = cv2.CascadeClassifier('/home/pi/opencv/opencv-4.5.0/data/haarcascades/haarcascade_frontalface_default.xml')
+    ```
+
+## Using the module
+
+Add the following configuration to the `modules` array in your `config/config.js` file.
+
+### Basic Configuration Example
+
+```javascript
+{
+    module: "MMM-ImagesPhotos",
+    position: "fullscreen_below",
+    config: {
+        path: "uploads/",
+        updateInterval: 60000,
+        animationSpeed: 1000,
+        showExif: true,
+        faceDetection: true
+    }
+},
+```
+
+### Configuration Options
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `path` | Path to the directory containing your images. If empty, it defaults to the `uploads` folder inside the module directory. | `""` |
+| `updateInterval` | How often to change the image (in milliseconds). | `5000` |
+| `getInterval` | How often to rescan the image directory for new files (in milliseconds). | `60000` |
+| `animationSpeed` | The duration of the fade-in/fade-out transitions (in milliseconds). | `500` |
+| `opacity` | The opacity of the displayed image. | `0.9` |
+| `sequential` | If `true`, images are displayed in alphabetical order. If `false`, they are displayed randomly. | `false` |
+| `showExif` | If `true`, displays an overlay with photo metadata like date, camera model, exposure, and GPS location (if available). | `true` |
+| `faceDetection` | If `true`, enables the face detection pan-and-zoom effect. Requires Python setup (see above). | `true` |
+| `maxWidth` | Maximum width of the image (e.g., "500px" or "50%"). Used in non-fullscreen mode. | `"100%"` |
+| `maxHeight` | Maximum height of the image (e.g., "500px" or "50%"). Used in non-fullscreen mode. | `"100%"` |
+| `fill` | **Fullscreen only.** If `true`, the background is filled with a blurred version of the image. | `false` |
+| `blur` | **Fullscreen only.** The amount of blur to apply to the background when `fill` is `true`. | `8` |
+| `backgroundColor` | **Fullscreen only.** Background color to show behind the image if `fill` is `false`. | `"black"` |
+| `imageEffects` | An array of animation effects to apply to the images. See the list of available effects below. | `["ip-zoom", ...]` |
+| `debugToConsole` | If `true`, prints detailed logs to the browser console and terminal for debugging. | `true` |
+
+#### Transition Timing
+
+You can fine-tune the display sequence with these settings (all in milliseconds):
+
+| Option | Description | Default |
+| --- | --- | --- |
+| `blackDuration` | Time the screen stays black before a new image fades in. | `1000` |
+| `fadeDuration` | Duration of the fade-in and fade-out animations. Overrides `animationSpeed`. | `1000` |
+| `displayDuration`| How long the image is shown between fades. Overrides `updateInterval`. | `5000` |
+| `transitionEasing`| The CSS easing function for transitions (e.g., `ease-in-out`, `linear`). | `"ease-in-out"` |
+
+#### Available Image Effects (`imageEffects`)
+
+- `ip-still` (no movement)
+- `ip-zoom`
+- `ip-zoom-panright`
+- `ip-zoom-panleft`
+- `ip-zoom-panup`
+- `ip-zoom-pandown`
+- `ip-panright`
+- `ip-panleft`
+- `ip-panup`
+- `ip-pandown`
+- `ip-pan-diag-tl-br`
+- `ip-pan-diag-tr-bl`
+- `ip-pan-diag-bl-tr`
+- `ip-pan-diag-br-tl`
+- `ip-face-zoom` (requires `faceDetection: true`)
 
 ## Changelog
 
-See the changelog for release notes and notable changes in `CHANGELOG.md`.
-
-## Recent Changes
-
-Recent notable updates in this module:
-
-- Added `VIBE-CODING.md` development guidelines and linked from README.
-- Added `CHANGELOG.md` with an `Unreleased` section.
-- Improved image transition flow: black → fade-in → display → fade-out with configurable timings.
-- Added average-color background sampling (`computeAverageColor`) and logic to apply it during transitions.
-- Added detailed debug logging and a `debugToConsole` option to echo important logs to the terminal.
-- Attempt to enable canvas readback for cross-origin images via `img.crossOrigin = 'Anonymous'` (requires server CORS).
-- Fixed duplicate event handlers and improved cleanup for fullscreen image handling.
-- Added module-prefixed CSS classes (`mmip-bgimage`, `mmip-foreground`) to reduce style collisions.
-
-If you need help reverting any change or adjusting debug verbosity, open an issue or create a PR.
-
-
-## Config
-
-The entry in `config.js` can include the following options:
-
-<!-- prettier-ignore-start -->
-| Option             | Description
-|--------------------|-----------
-| `opacity`          | The opacity of the image.<br><br>**Type:** `double`<br>Default 0.9
-| `animationSpeed`   | How long the fade out and fade in of photos should take.<br><br>**Type:** `int`<br>Default 500
-| `updateInterval`   | How long before loading a new image.<br><br>**Type:** `int`(milliseconds) <br>Default 5000 milliseconds
-| `getInterval`      | Interval value to get new images from directory.<br><br>**Type:** `int`(milliseconds) <br>Default 60000 milliseconds
-| `sequential`       | true or false, whether to process the images randomly(default) or sequentially<br>Default false
-| `showExif`         | Shows a box with EXIF information (date, camera, location, etc.) on the image.<br>Set to `false` to disable.<br><br>**Type:** `boolean`<br>Default `true`
-| only when position is `NOT` fullscreen_below or fullscreen_above|
-| `maxWidth`         | Value for maximum width. Optional, possible values: absolute (e.g. "700px") or relative ("50%") <br> Default 100%
-| `maxHeight`        | Value for maximum height. Optional, possible values: absolute (e.g. "400px") or relative ("70%") <br> Default 100%
-|only when position `IS` fullscreen_below or fullscreen_above 
-| `backgroundColor`  | Value for color used to fill around the image if not fullscreen,  can be #xxyyzz, like #808080 (grey),<br> if fill is true, the backgroundColor setting is ignored<br>Default 'black'
-| `fill`             | true or false,  instead of color use a blurred copy of the image to fill around the image, <br>Default false.
-| `blur`             | the size of the pixel blur of the background fill, <br>Default 8
-
-
-Here is an example of an entry in `config.js`
-not fullscreen
-```js
-{
- module: "MMM-ImagesPhotos",
- position: "middle_center",
- config: {
-  opacity: 0.9,
-  animationSpeed: 500,
-  updateInterval: 5000,
-  maxHeight: "500px",
-  maxWidth:"500px",
-  sequential: false  // process the image list randomly
- }
-},
-```
-fullscreen
-```js
-{
-	module: "MMM-ImagesPhotos",
-	position: "fullscreen_below",
-	config: {
-		opacity: 0.9,
-		animationSpeed: 500,
-		updateInterval: 5000,
-		backgroundColor: 'grey',  // not used if fill is true
-		fill: false,   // fill around image with blurred copy of image
-		blur: 10,   // only used if fill is true
-		sequential: false  // process the image list randomly
-	}
-},
-```
+For a list of all notable changes to this module, please see the [CHANGELOG.md](CHANGELOG.md) file.
