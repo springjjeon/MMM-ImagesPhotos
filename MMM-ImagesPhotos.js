@@ -31,7 +31,8 @@ Module.register(ourModuleName, {
       "ip-face-zoom"
     ],
     showExif: true,
-    language: config.language
+    language: config.language,
+    faceDetection: true
   },
   // transition defaults (ms)
   transitionDefaults: {
@@ -382,7 +383,7 @@ Module.register(ourModuleName, {
       let isFaceZoom = false;
 
       // Decide if we should do a face zoom (30% chance if faces are present)
-      if (this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
+      if (this.config.faceDetection && this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
         if (Math.random() < 0.4) { // <-- Probability changed to 40%
           isFaceZoom = true;
         }
@@ -455,7 +456,7 @@ Module.register(ourModuleName, {
       // Attach handlers before src for cached images
       img.onerror = (evt) => {
         Log.error("MMM-ImagesPhotos image load failed", evt && evt.currentTarget && evt.currentTarget.src);
-        self.updateDom();
+        setTimeout(() => self.updateDom(), self.config.retryDelay);
       };
       img.onload = (evt) => {
         try { self.animateTransition(evt.currentTarget, wrapper); } catch (e) { Log.warn(self.name, e); }
@@ -475,11 +476,6 @@ Module.register(ourModuleName, {
         exifWrapper.className = "exif-info";
 
         const infoParts = [];
-
-        if (photoImage.path) {
-          const filename = photoImage.path.split("/").pop();
-          infoParts.push(`💾 ${filename}`);
-        }
 
         const timestamp = photoImage.exif.tags.DateTimeOriginal;
         if (timestamp && typeof timestamp === 'number') {
@@ -580,7 +576,7 @@ Module.register(ourModuleName, {
         let isFaceZoom = false;
 
         // Decide if we should do a face zoom (30% chance if faces are present)
-                if (this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
+                if (this.config.faceDetection && this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
                   if (Math.random() < 0.4) { // <-- Probability changed to 40%
                     isFaceZoom = true;
                   }
@@ -656,7 +652,7 @@ Module.register(ourModuleName, {
         
         img.onerror = (evt) => {
           Log.error("MMM-ImagesPhotos image load failed", evt && evt.currentTarget && evt.currentTarget.src);
-          this.updateDom();
+          setTimeout(() => this.updateDom(), this.config.retryDelay);
         };
 
         img.onload = (evt) => {
@@ -693,11 +689,6 @@ Module.register(ourModuleName, {
           exifWrapper.className = "exif-info";
 
           const infoParts = [];
-
-          if (photoImage.path) {
-            const filename = photoImage.path.split("/").pop();
-            infoParts.push(`💾 ${filename}`);
-          }
 
           const timestamp = photoImage.exif.tags.DateTimeOriginal;
           if (timestamp && typeof timestamp === 'number') {

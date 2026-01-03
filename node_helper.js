@@ -76,11 +76,12 @@ module.exports = NodeHelper.create({
 
   async runFaceDetection(imagePath, id) {
     return new Promise((resolve, reject) => {
-      if (!this.config[id].faceDetectionScript) {
+      if (!this.config[id].faceDetection || !this.config[id].faceDetectionScript) {
         resolve(null);
         return;
       }
 
+      console.log(`[MMM-ImagesPhotos] Running python script: ${this.config[id].faceDetectionScript}, File: ${imagePath}`);
       const python = spawn("python", [this.config[id].faceDetectionScript, imagePath]);
       let dataString = "";
       let errorString = "";
@@ -98,6 +99,7 @@ module.exports = NodeHelper.create({
           console.error(`[MMM-ImagesPhotos] Face detection script for ${imagePath} exited with code ${code}: ${errorString}`);
           resolve(null);
         } else {
+          console.log(`[MMM-ImagesPhotos] Python script result for ${imagePath}: ${dataString}`);
           try {
             const faceData = JSON.parse(dataString);
             console.log(`[MMM-ImagesPhotos] Face detection result for ${imagePath}:`, JSON.stringify(faceData));
@@ -176,7 +178,9 @@ module.exports = NodeHelper.create({
         }
 
         // Process face detection
-        photoObject.face = await this.runFaceDetection(imagePath, id);
+        if (this.config[id].faceDetection) {
+          photoObject.face = await this.runFaceDetection(imagePath, id);
+        }
 
         this.sendSocketNotification("METADATA_RESPONSE", { id: id, photo: photoObject });
       } catch (e) {
