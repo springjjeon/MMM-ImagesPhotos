@@ -389,69 +389,85 @@ Module.register(ourModuleName, {
         }
       }
 
-      if (isFaceZoom) {
-        const faces = photoImage.face.faces;
-        const face = faces[Math.floor(Math.random() * faces.length)]; // Pick a random face
-        
-        const zoomIn = Math.random() < 0.5;
-        if (zoomIn) { // Apply pan-zoom for zoom-in
-          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
-          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
-          const S = 1.15; // <-- Scale reverted to 1.15
-
-          const fx = fx_perc - 0.5;
-          const fy = fy_perc - 0.5;
-          const Dx = 0; 
-          const Dy = 0.3 - 0.5;
-          
-          let Tx = (Dx - S * fx) * 100;
-          let Ty = (Dy - S * fy) * 100;
-
-          // Cap the translation to 15%
-          Tx = Math.max(-15, Math.min(15, Tx)); // <-- Capping re-introduced
-          Ty = Math.max(-15, Math.min(15, Ty));
-          
-          const duration = (20 + Math.random() * 20).toFixed(2);
-          const keyframeName = `face-pan-zoom-${Date.now()}`;
-          const keyframe = `
-            @keyframes ${keyframeName} {
-              0% { transform: translate(0%, 0%) scale(1); }
-              100% { transform: translate(${Tx}%, ${Ty}%) scale(${S}); }
+      
+            if (isFaceZoom) {
+              const faces = photoImage.face.faces;
+              const face = faces[Math.floor(Math.random() * faces.length)]; // Pick a random face
+              
+              const zoomIn = Math.random() < 0.5;
+              if (zoomIn) { // Apply pan-zoom for zoom-in
+                const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+                const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+                const S = 1.15; // <-- Scale reverted to 1.15
+      
+                const fx = fx_perc - 0.5;
+                const fy = fy_perc - 0.5;
+                const Dx = 0; 
+                const Dy = 0.3 - 0.5;
+                
+                let Tx = (Dx - S * fx) * 100;
+                let Ty = (Dy - S * fy) * 100;
+      
+                // Cap the translation to 15%
+                Tx = Math.max(-15, Math.min(15, Tx)); // <-- Capping re-introduced
+                Ty = Math.max(-15, Math.min(15, Ty));
+                
+                const duration = (20 + Math.random() * 20).toFixed(2);
+                const keyframeName = `face-pan-zoom-${Date.now()}`;
+                const keyframe = `
+                  @keyframes ${keyframeName} {
+                    0% { transform: translate(0%, 0%) scale(var(--base-scale)); }
+                    100% { transform: translate(${Tx}%, ${Ty}%) scale(calc(var(--base-scale) * ${S})); }
+                  }
+                `;
+                
+                const styleEl = document.createElement("style");
+                styleEl.innerHTML = keyframe;
+                document.head.appendChild(styleEl);
+      
+                img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
+                finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
+      
+                img.addEventListener("animationend", () => {
+                  if(styleEl.parentNode) styleEl.remove();
+                }, { once: true });
+      
+              } else { // Apply simple zoom-out, centered on the face
+                const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+                const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+                img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
+                img.className = "bgimage mmip-bgimage ip-face-zoom-out";
+                finalEffect = `ip-face-zoom-out`;
+                const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+                img.style.animationDuration = randomDuration;
+              }
+            } else {
+              // Fallback to a regular effect
+              const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
+              const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
+              finalEffect = randomEffect;
+              img.className = "bgimage mmip-bgimage " + randomEffect;
+              const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+              img.style.animationDuration = randomDuration;
+              finalEffect += ` ${randomDuration}`;
             }
-          `;
-          
-          const styleEl = document.createElement("style");
-          styleEl.innerHTML = keyframe;
-          document.head.appendChild(styleEl);
-
-          img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
-          finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
-
-          img.addEventListener("animationend", () => {
-            if(styleEl.parentNode) styleEl.remove();
-          }, { once: true });
-
-        } else { // Apply simple zoom-out, centered on the face
-          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
-          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
-          img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
-          img.className = "bgimage mmip-bgimage ip-face-zoom-out";
-          finalEffect = `ip-face-zoom-out`;
-          const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
-          img.style.animationDuration = randomDuration;
-        }
-      } else {
-        // Fallback to a regular effect
-        const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
-        const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
-        finalEffect = randomEffect;
-        img.className = "bgimage mmip-bgimage " + randomEffect;
-        const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
-        img.style.animationDuration = randomDuration;
-        finalEffect += ` ${randomDuration}`;
-      }
-      Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);
-      photoImage.effect = finalEffect;
+      
+            let isLandscape = false;
+            if (photoImage.face && photoImage.face.width && photoImage.face.height) {
+              isLandscape = photoImage.face.width > photoImage.face.height;
+            } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ImageWidth && photoImage.exif.tags.ImageHeight) {
+              isLandscape = photoImage.exif.tags.ImageWidth > photoImage.exif.tags.ImageHeight;
+            } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ExifImageWidth && photoImage.exif.tags.ExifImageHeight) {
+              isLandscape = photoImage.exif.tags.ExifImageWidth > photoImage.exif.tags.ExifImageHeight;
+            }
+      
+            if (isLandscape) {
+              img.classList.add("landscape");
+            } else {
+              img.classList.add("portrait");
+            }
+            
+            Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);      photoImage.effect = finalEffect;
 
       // Attach handlers before src for cached images
       img.onerror = (evt) => {
@@ -582,69 +598,85 @@ Module.register(ourModuleName, {
                   }
                 }
         
-                if (isFaceZoom) {
-                  const faces = photoImage.face.faces;
-                  const face = faces[Math.floor(Math.random() * faces.length)]; // Pick a random face
-                  
-                  const zoomIn = Math.random() < 0.5;
-                  if (zoomIn) { // Apply pan-zoom for zoom-in
-                    const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
-                    const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
-                    const S = 1.15; // <-- Scale reverted to 1.15
-        
-                    const fx = fx_perc - 0.5;
-                    const fy = fy_perc - 0.5;
-                    const Dx = 0; 
-                    const Dy = 0.3 - 0.5;
-                    
-                    let Tx = (Dx - S * fx) * 100;
-                    let Ty = (Dy - S * fy) * 100;
-        
-                    // Cap the translation to 15%
-                    Tx = Math.max(-15, Math.min(15, Tx)); // <-- Capping re-introduced
-                    Ty = Math.max(-15, Math.min(15, Ty));
-                    
-                    const duration = (20 + Math.random() * 20).toFixed(2);
-                    const keyframeName = `face-pan-zoom-${Date.now()}`;
-                    const keyframe = `
-                      @keyframes ${keyframeName} {
-                        0% { transform: translate(0%, 0%) scale(1); }
-                        100% { transform: translate(${Tx}%, ${Ty}%) scale(${S}); }
+                
+                      if (isFaceZoom) {
+                        const faces = photoImage.face.faces;
+                        const face = faces[Math.floor(Math.random() * faces.length)]; // Pick a random face
+                        
+                        const zoomIn = Math.random() < 0.5;
+                        if (zoomIn) { // Apply pan-zoom for zoom-in
+                          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+                          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+                          const S = 1.15; // <-- Scale reverted to 1.15
+                
+                          const fx = fx_perc - 0.5;
+                          const fy = fy_perc - 0.5;
+                          const Dx = 0; 
+                          const Dy = 0.3 - 0.5;
+                          
+                          let Tx = (Dx - S * fx) * 100;
+                          let Ty = (Dy - S * fy) * 100;
+                
+                          // Cap the translation to 15%
+                          Tx = Math.max(-15, Math.min(15, Tx)); // <-- Capping re-introduced
+                          Ty = Math.max(-15, Math.min(15, Ty));
+                          
+                          const duration = (20 + Math.random() * 20).toFixed(2);
+                          const keyframeName = `face-pan-zoom-${Date.now()}`;
+                          const keyframe = `
+                            @keyframes ${keyframeName} {
+                              0% { transform: translate(0%, 0%) scale(var(--base-scale)); }
+                              100% { transform: translate(${Tx}%, ${Ty}%) scale(calc(var(--base-scale) * ${S})); }
+                            }
+                          `;
+                          
+                          const styleEl = document.createElement("style");
+                          styleEl.innerHTML = keyframe;
+                          document.head.appendChild(styleEl);
+                
+                          img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
+                          finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
+                
+                          img.addEventListener("animationend", () => {
+                            if(styleEl.parentNode) styleEl.remove();
+                          }, { once: true });
+                
+                        } else { // Apply simple zoom-out, centered on the face
+                          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+                          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
+                          img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
+                          img.className = "bgimage mmip-bgimage ip-face-zoom-out";
+                          finalEffect = `ip-face-zoom-out`;
+                          const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+                          img.style.animationDuration = randomDuration;
+                        }
+                      } else {
+                        // Fallback to a regular effect
+                        const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
+                        const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
+                        finalEffect = randomEffect;
+                        img.className = "bgimage mmip-bgimage " + randomEffect;
+                        const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+                        img.style.animationDuration = randomDuration;
+                        finalEffect += ` ${randomDuration}`;
                       }
-                    `;
-                    
-                    const styleEl = document.createElement("style");
-                    styleEl.innerHTML = keyframe;
-                    document.head.appendChild(styleEl);
-        
-                    img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
-                    finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
-        
-                    img.addEventListener("animationend", () => {
-                      if(styleEl.parentNode) styleEl.remove();
-                    }, { once: true });
-        
-                  } else { // Apply simple zoom-out, centered on the face
-                    const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
-                    const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
-                    img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
-                    img.className = "bgimage mmip-bgimage ip-face-zoom-out";
-                    finalEffect = `ip-face-zoom-out`;
-                    const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
-                    img.style.animationDuration = randomDuration;
-                  }
-        } else {
-          // Fallback to a regular effect
-          const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
-          const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
-          finalEffect = randomEffect;
-          img.className = "bgimage mmip-bgimage " + randomEffect;
-          const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
-          img.style.animationDuration = randomDuration;
-          finalEffect += ` ${randomDuration}`;
-        }
-        Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);
-        photoImage.effect = finalEffect;
+                
+                      let isLandscape = false;
+                      if (photoImage.face && photoImage.face.width && photoImage.face.height) {
+                        isLandscape = photoImage.face.width > photoImage.face.height;
+                      } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ImageWidth && photoImage.exif.tags.ImageHeight) {
+                        isLandscape = photoImage.exif.tags.ImageWidth > photoImage.exif.tags.ImageHeight;
+                      } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ExifImageWidth && photoImage.exif.tags.ExifImageHeight) {
+                        isLandscape = photoImage.exif.tags.ExifImageWidth > photoImage.exif.tags.ExifImageHeight;
+                      }
+                
+                      if (isLandscape) {
+                        img.classList.add("landscape");
+                      } else {
+                        img.classList.add("portrait");
+                      }
+                      
+                      Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);        photoImage.effect = finalEffect;
 
         img.style.position = "absolute";
         // Image is always visible within its container, we fade the container

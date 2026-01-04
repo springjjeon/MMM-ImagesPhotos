@@ -27,12 +27,17 @@
 
 /* module-prefixed alias to avoid global name collisions */
 .mmip-bgimage {
+  --base-scale: 1;
   position: absolute;
   top: 0;
   left: 0;
   z-index: 2;
   pointer-events: none;
   will-change: opacity, transform;
+}
+
+.mmip-bgimage.landscape {
+  --base-scale: 1.4;
 }
 
 /* container for foreground images to ensure proper stacking */
@@ -142,18 +147,18 @@
 
 /* Keyframes */
 @keyframes ip-zoom {
-  0% { transform: scale(1); }
-  100% { transform: scale(1.08); }
+  0% { transform: scale(var(--base-scale)); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)); }
 }
 
 @keyframes ip-face-zoom-in {
-  0% { transform: scale(1); }
-  100% { transform: scale(1.15); }
+  0% { transform: scale(var(--base-scale)); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)); }
 }
 
 @keyframes ip-face-zoom-out {
-  0% { transform: scale(1.15); }
-  100% { transform: scale(1); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)); }
+  100% { transform: scale(var(--base-scale)); }
 }
 
 @keyframes ip-fade {
@@ -164,65 +169,65 @@
 }
 
 @keyframes ip-panleft {
-  0% { transform: scale(1.15) translateX(7%); }
-  100% { transform: scale(1.15) translateX(-7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
 }
 
 @keyframes ip-panright {
-  0% { transform: scale(1.15) translateX(-7%); }
-  100% { transform: scale(1.15) translateX(7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
 }
 
 @keyframes ip-panup {
-  0% { transform: scale(1.15) translateY(5%); }
-  100% { transform: scale(1.15) translateY(-5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
 }
 
 @keyframes ip-pandown {
-  0% { transform: scale(1.15) translateY(-5%); }
-  100% { transform: scale(1.15) translateY(5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
 }
 
 @keyframes ip-zoom-panright {
-  0% { transform: scale(1.15) translateX(-7%); }
-  100% { transform: scale(1.15) translateX(7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
 }
 
 @keyframes ip-zoom-panleft {
-  0% { transform: scale(1.15) translateX(7%); }
-  100% { transform: scale(1.15) translateX(-7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
 }
 
 @keyframes ip-zoom-panup {
-  0% { transform: scale(1.15) translateY(5%); }
-  100% { transform: scale(1.15) translateY(-5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
 }
 
 @keyframes ip-zoom-pandown {
-  0% { transform: scale(1.15) translateY(-5%); }
-  100% { transform: scale(1.15) translateY(5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
 }
 
 @keyframes ip-pan-diag-tl-br {
-  0% { transform: scale(1.15) translate(-7%, -5%); }
-  100% { transform: scale(1.15) translate(7%, 5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, -5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, 5%); }
 }
 @keyframes ip-pan-diag-tr-bl {
-  0% { transform: scale(1.15) translate(7%, -5%); }
-  100% { transform: scale(1.15) translate(-7%, 5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, -5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, 5%); }
 }
 @keyframes ip-pan-diag-bl-tr {
-  0% { transform: scale(1.15) translate(-7%, 5%); }
-  100% { transform: scale(1.15) translate(7%, -5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, 5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, -5%); }
 }
 @keyframes ip-pan-diag-br-tl {
-  0% { transform: scale(1.15) translate(7%, 5%); }
-  100% { transform: scale(1.15) translate(-7%, -5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, 5%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, -5%); }
 }
 
 @keyframes ip-still {
-  0% { transform: scale(1); }
-  100% { transform: scale(1); }
+  0% { transform: scale(var(--base-scale)); }
+  100% { transform: scale(var(--base-scale)); }
 }
 
 @keyframes ip-grayscale {
@@ -238,9 +243,9 @@
 }
 
 @keyframes ip-rotate {
-  0% { transform: rotate(0deg) scale(1); }
-  50% { transform: rotate(2deg) scale(1.03); }
-  100% { transform: rotate(0deg) scale(1); }
+  0% { transform: rotate(0deg) scale(var(--base-scale)); }
+  50% { transform: rotate(2deg) scale(calc(var(--base-scale) * 1.03)); }
+  100% { transform: rotate(0deg) scale(var(--base-scale)); }
 }
 
 .exif-info {
