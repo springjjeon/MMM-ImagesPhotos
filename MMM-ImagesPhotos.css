@@ -37,7 +37,7 @@
 }
 
 .mmip-bgimage.landscape {
-  --base-scale: 1.4;
+  --base-scale: 1.3;
 }
 
 /* container for foreground images to ensure proper stacking */
