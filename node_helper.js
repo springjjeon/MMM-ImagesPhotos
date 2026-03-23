@@ -267,7 +267,8 @@ module.exports = NodeHelper.create({
             console.log(`${id} saving folder path=${filePath}/${file}`);
             folders.push(`${filePath}/${file}`);
           }
-        } else if (!file.startsWith(".")) {
+        } else if (!file.startsWith(".") && !file.startsWith("!")) {
+          // !로 시작하는 파일도 매직미러 화면에 표시하지 않음 (숨김 처리)
           return file;
         }
       });
