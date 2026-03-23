@@ -75,11 +75,23 @@ app.get('/', (req, res) => {
                     ${folders.map(folder => {
                         const baseName = path.basename(folder);
                         const isHidden = baseName.startsWith('!'); 
-                        const displayName = folder.replace(/!/g, '').split(path.sep).join(' / ');
+                        const displayName = baseName.replace(/^!/, ''); // 전체 경로 대신 현재 폴더명만 표시
+                        
+                        // 폴더 깊이에 따른 트리 구조 들여쓰기 계산
+                        const depth = folder.split(path.sep).length - 1;
+                        const marginLeft = depth * 20; // 20px씩 들여쓰기
+                        
+                        // 클라이언트 JS에서 사용할 경로 포맷 및 하위 폴더 존재 여부 확인
+                        const clientPath = folder.split(path.sep).join('/');
+                        const hasChildren = folders.some(f => f !== folder && f.startsWith(folder + path.sep));
+                        // 작은 따옴표(')가 폴더명에 있을 경우를 대비한 이스케이프 처리
+                        const safeClientPath = clientPath.replace(/'/g, "\\'");
+
                         return `
-                            <li style="padding: 15px 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 16px; ${isHidden ? 'color: #aaa; text-decoration: line-through;' : 'font-weight: bold; color: #333;'}">
-                                    ${isHidden ? '🙈' : '👁️'} ${displayName}
+                            <li data-path="${clientPath}" style="padding: 15px 10px; margin-left: ${marginLeft}px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; ${depth > 0 ? 'border-left: 2px solid #ddd; padding-left: 10px;' : ''} transition: all 0.2s ease;">
+                                <span style="font-size: 16px; display: flex; align-items: center; gap: 8px; ${isHidden ? 'color: #aaa; text-decoration: line-through;' : 'font-weight: bold; color: #333;'}">
+                                    ${hasChildren ? `<span onclick="toggleFolder('${safeClientPath}', this)" style="cursor: pointer; display: inline-flex; justify-content: center; align-items: center; width: 24px; height: 24px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; font-size: 10px; color: #555; user-select: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">▼</span>` : `<span style="display: inline-block; width: 24px;"></span>`}
+                                    ${isHidden ? '🙈' : '👁️'} ${depth > 0 ? 'ㄴ ' : ''}${displayName}
                                 </span>
                                 <div style="display: flex; gap: 5px;">
                                     <form action="/manage-photos" method="get" style="margin: 0;">
@@ -129,6 +141,31 @@ app.get('/', (req, res) => {
                 </form>
             </div>
             ${folderListHtml}
+
+            <script>
+                // 하위 폴더 접기/펼치기 토글 함수
+                function toggleFolder(path, element) {
+                    const li = element.closest('li');
+                    li.classList.toggle('collapsed');
+                    const isCollapsed = li.classList.contains('collapsed');
+                    element.innerText = isCollapsed ? '▶' : '▼';
+                    updateVisibility();
+                }
+
+                // 접힌 폴더의 모든 하위 항목을 찾아 숨기는 함수
+                function updateVisibility() {
+                    const rows = document.querySelectorAll('li[data-path]');
+                    const collapsedPaths = Array.from(rows)
+                        .filter(r => r.classList.contains('collapsed'))
+                        .map(r => r.getAttribute('data-path') + '/');
+                    
+                    rows.forEach(row => {
+                        const path = row.getAttribute('data-path');
+                        const isHidden = collapsedPaths.some(cp => path.startsWith(cp));
+                        row.style.display = isHidden ? 'none' : 'flex';
+                    });
+                }
+            </script>
         </body>
         </html>
     `);
