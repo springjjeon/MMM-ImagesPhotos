@@ -262,8 +262,11 @@ module.exports = NodeHelper.create({
       files = fs.readdirSync(filePath).filter((file) => {
         console.log(`found file=${file} on path=${filePath}`);
         if (fs.statSync(`${filePath}/${file}`).isDirectory()) {
-          console.log(`${id} saving folder path=${filePath}/${file}`);
-          folders.push(`${filePath}/${file}`);
+          // !로 시작하는 폴더는 매직미러 화면에 표시하지 않음 (숨김 처리)
+          if (!file.startsWith("!")) {
+            console.log(`${id} saving folder path=${filePath}/${file}`);
+            folders.push(`${filePath}/${file}`);
+          }
         } else if (!file.startsWith(".")) {
           return file;
         }
