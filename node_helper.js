@@ -16,6 +16,7 @@ const getAverageColor = require('fast-average-color-node');
 const exifParser = require("exif-parser");
 const https = require("https");
 const { spawn } = require("child_process");
+const os = require("os");
 
 async function reverseGeocode(lat, lon, language) {
   return new Promise((resolve, reject) => {
@@ -56,6 +57,18 @@ module.exports = NodeHelper.create({
   // Override start method.
   config: {},
   path_images: {},
+
+  getLocalIp() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === "IPv4" && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+    return "127.0.0.1";
+  },
 
   buildLocationString(address, displayName) {
     const locationParts = [];
@@ -141,6 +154,7 @@ module.exports = NodeHelper.create({
       this.setConfig(payload.id);
       this.extraRoutes(payload.id);
       this.sendSocketNotification("READY", payload.id);
+      this.sendSocketNotification("SERVER_IP", { id: payload.id, ip: this.getLocalIp() });
     }
     if (notification === "GET_METADATA") {
       const { id, photo } = payload;

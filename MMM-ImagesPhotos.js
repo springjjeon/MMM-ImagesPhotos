@@ -32,7 +32,11 @@ Module.register(ourModuleName, {
     ],
     showExif: true,
     language: config.language,
-    faceDetection: true
+    faceDetection: true,
+    showUploadQrCode: true,
+    uploadUrl: "", // 비워두면 자동 감지된 IP 사용
+    uploadPort: 8999, // 자동 감지된 IP와 조합될 기본 포트 번호
+    qrCodePosition: "bottom-left" // "bottom-left", "bottom-right", "top-left", "top-right"
   },
   // transition defaults (ms)
   transitionDefaults: {
@@ -113,6 +117,9 @@ Module.register(ourModuleName, {
         // If this is the first photo, display it immediately
         this.updateDom(this.config.animationSpeed);
       }
+    }
+    if (notification === "SERVER_IP" && payload.id === this.identifier) {
+      this.serverIp = payload.ip;
     }
   },
 
@@ -255,6 +262,50 @@ Module.register(ourModuleName, {
       Log.warn(this.name, "computeAverageColor failed", e);
       return null;
     }
+  },
+
+  createQrCodeNode() {
+    if (!this.config.showUploadQrCode) return null;
+    
+    // 설정된 URL이 없으면, 서버에서 전달받은 IP와 설정된 Port로 동적 URL 생성
+    let finalUrl = this.config.uploadUrl;
+    if (!finalUrl && this.serverIp) {
+        finalUrl = `http://${this.serverIp}:${this.config.uploadPort}`;
+    }
+    if (!finalUrl) return null;
+
+    const qrWrapper = document.createElement("div");
+    qrWrapper.className = "mmip-qr-code";
+    qrWrapper.style.position = "absolute";
+    qrWrapper.style.zIndex = 100;
+    qrWrapper.style.padding = "10px";
+    qrWrapper.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+    qrWrapper.style.borderRadius = "10px";
+
+    // 설정된 위치값에 따라 배치
+    if (this.config.qrCodePosition.includes("bottom")) qrWrapper.style.bottom = "20px";
+    if (this.config.qrCodePosition.includes("top")) qrWrapper.style.top = "20px";
+    if (this.config.qrCodePosition.includes("left")) qrWrapper.style.left = "20px";
+    if (this.config.qrCodePosition.includes("right")) qrWrapper.style.right = "20px";
+
+    const qrImg = document.createElement("img");
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(finalUrl)}`;
+    qrImg.style.width = "100px";
+    qrImg.style.height = "100px";
+    qrImg.style.display = "block";
+
+    const text = document.createElement("div");
+    text.innerHTML = "📸 사진 업로드";
+    text.style.color = "white";
+    text.style.fontSize = "14px";
+    text.style.textAlign = "center";
+    text.style.marginTop = "8px";
+    text.style.fontWeight = "bold";
+
+    qrWrapper.appendChild(qrImg);
+    qrWrapper.appendChild(text);
+
+    return qrWrapper;
   },
 
   animateTransition(imgEl, container) {
@@ -551,6 +602,10 @@ Module.register(ourModuleName, {
         }
       }
     }
+
+    const qrNode = this.createQrCodeNode();
+    if (qrNode) fg.appendChild(qrNode);
+
     return wrapper;
   },
 
@@ -584,6 +639,7 @@ Module.register(ourModuleName, {
         while (self.fg.firstChild) {
           self.fg.removeChild(self.fg.firstChild);
         }
+        self.fg.style.opacity = 0; // 새 사진이 로드되기 전까지 QR코드와 잔상이 보이지 않도록 투명도 초기화
 
         const img = document.createElement("img");
         
@@ -778,6 +834,9 @@ Module.register(ourModuleName, {
                           exifWrapper.innerHTML = infoParts.join('<br>');
                           this.fg.appendChild(exifWrapper);          }
         }
+
+        const qrNode = this.createQrCodeNode();
+        if (qrNode) this.fg.appendChild(qrNode);
       }
     }
     return this.wrapper;
