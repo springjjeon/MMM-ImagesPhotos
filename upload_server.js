@@ -35,13 +35,23 @@ const upload = multer({ storage: storage });
 
 // 스마트폰에서 접속할 때 보여줄 웹페이지 (모바일 친화적 디자인)
 app.get('/', (req, res) => {
-    // 업로드 폴더 내의 하위 폴더 목록 읽기
-    let folders = [];
-    if (fs.existsSync(uploadDir)) {
-        folders = fs.readdirSync(uploadDir).filter(file => {
-            return fs.statSync(path.join(uploadDir, file)).isDirectory();
-        });
+    // 업로드 폴더 내의 하위 폴더 목록 읽기 (재귀 탐색)
+    function getDirectories(dir, relativePath = '') {
+        let results = [];
+        if (!fs.existsSync(dir)) return results;
+        const items = fs.readdirSync(dir);
+        for (const item of items) {
+            const fullPath = path.join(dir, item);
+            if (fs.statSync(fullPath).isDirectory()) {
+                const itemRelativePath = relativePath ? path.join(relativePath, item) : item;
+                results.push(itemRelativePath);
+                results = results.concat(getDirectories(fullPath, itemRelativePath));
+            }
+        }
+        return results;
     }
+
+    const folders = getDirectories(uploadDir);
 
     // 폴더 관리 UI HTML 조립
     let folderListHtml = '';
@@ -60,8 +70,9 @@ app.get('/', (req, res) => {
                 </div>
                 <ul style="list-style: none; padding: 0; text-align: left;">
                     ${folders.map(folder => {
-                        const isHidden = folder.startsWith('!'); // '!'로 시작하면 숨겨진 폴더
-                        const displayName = isHidden ? folder.substring(1) : folder;
+                        const baseName = path.basename(folder);
+                        const isHidden = baseName.startsWith('!'); 
+                        const displayName = folder.replace(/!/g, '').split(path.sep).join(' / ');
                         return `
                             <li style="padding: 15px 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
                                 <span style="font-size: 16px; ${isHidden ? 'color: #aaa; text-decoration: line-through;' : 'font-weight: bold; color: #333;'}">
@@ -141,13 +152,16 @@ app.post('/toggle-folder', (req, res) => {
     const oldPath = path.join(uploadDir, folderName);
     if (!fs.existsSync(oldPath)) return res.redirect('/');
 
-    let newFolderName = folderName;
-    if (folderName.startsWith('!')) {
-        newFolderName = folderName.substring(1); // 숨김 기호 제거 (보이기)
+    const parentDir = path.dirname(oldPath);
+    const baseName = path.basename(oldPath);
+
+    let newBaseName = baseName;
+    if (baseName.startsWith('!')) {
+        newBaseName = baseName.substring(1); // 숨김 기호 제거 (보이기)
     } else {
-        newFolderName = '!' + folderName; // 숨김 기호 추가 (숨기기)
+        newBaseName = '!' + baseName; // 숨김 기호 추가 (숨기기)
     }
-    const newPath = path.join(uploadDir, newFolderName);
+    const newPath = path.join(parentDir, newBaseName);
 
     try {
         fs.renameSync(oldPath, newPath);
@@ -161,18 +175,35 @@ app.post('/toggle-folder', (req, res) => {
     });
 });
 
+// 하위 폴더까지 일괄 보이기/숨기기를 위한 재귀 함수
+function renameAllDirectories(dirPath, showAll) {
+    if (!fs.existsSync(dirPath)) return;
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+        const fullPath = path.join(dirPath, item);
+        if (fs.statSync(fullPath).isDirectory()) {
+            // 하위 폴더 먼저 처리 (자식 폴더명 변경이 부모 경로에 영향을 주지 않도록)
+            renameAllDirectories(fullPath, showAll);
+            
+            const isHidden = item.startsWith('!');
+            let newItem = item;
+            if (showAll && isHidden) {
+                newItem = item.substring(1);
+            } else if (!showAll && !isHidden) {
+                newItem = '!' + item;
+            }
+            
+            if (newItem !== item) {
+                try { fs.renameSync(fullPath, path.join(dirPath, newItem)); } 
+                catch (e) { console.error('폴더명 일괄 변경 실패:', e); }
+            }
+        }
+    }
+}
+
 // 전체 보이기 로직
 app.post('/show-all-folders', (req, res) => {
-    if (fs.existsSync(uploadDir)) {
-        const folders = fs.readdirSync(uploadDir).filter(file => fs.statSync(path.join(uploadDir, file)).isDirectory());
-        folders.forEach(folder => {
-            if (folder.startsWith('!')) {
-                const oldPath = path.join(uploadDir, folder);
-                const newPath = path.join(uploadDir, folder.substring(1));
-                try { fs.renameSync(oldPath, newPath); } catch (e) { console.error('폴더명 변경 실패:', e); }
-            }
-        });
-    }
+    renameAllDirectories(uploadDir, true);
     exec('pm2 restart MagicMirror || pm2 restart mm', () => {
         res.redirect('/');
     });
@@ -180,16 +211,7 @@ app.post('/show-all-folders', (req, res) => {
 
 // 전체 숨기기 로직
 app.post('/hide-all-folders', (req, res) => {
-    if (fs.existsSync(uploadDir)) {
-        const folders = fs.readdirSync(uploadDir).filter(file => fs.statSync(path.join(uploadDir, file)).isDirectory());
-        folders.forEach(folder => {
-            if (!folder.startsWith('!')) {
-                const oldPath = path.join(uploadDir, folder);
-                const newPath = path.join(uploadDir, '!' + folder);
-                try { fs.renameSync(oldPath, newPath); } catch (e) { console.error('폴더명 변경 실패:', e); }
-            }
-        });
-    }
+    renameAllDirectories(uploadDir, false);
     exec('pm2 restart MagicMirror || pm2 restart mm', () => {
         res.redirect('/');
     });
