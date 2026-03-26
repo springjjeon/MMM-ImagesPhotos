@@ -462,7 +462,7 @@ app.get('/manage-photos', (req, res) => {
 
         return `
             <div class="photo-card ${isHidden ? 'is-hidden' : ''}">
-                <div class="photo-image-container">
+                <div class="photo-image-container" onclick="openFullscreen('${fileUrl}', '${ext}')">
                     ${preview}
                     ${isHidden ? `<div class="hidden-overlay"><span class="hidden-icon">🙈</span></div>` : ''}
                 </div>
@@ -589,6 +589,24 @@ app.get('/manage-photos', (req, res) => {
                     color: white;
                     border-color: #007bff;
                 }
+                .batch-actions {
+                    display: flex;
+                    gap: 10px;
+                }
+                .batch-btn {
+                    padding: 10px 18px;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 500;
+                    font-size: 14px;
+                    transition: background-color 0.2s;
+                }
+                .batch-btn.show-all-btn { background-color: #28a745; }
+                .batch-btn.show-all-btn:hover { background-color: #218838; }
+                .batch-btn.hide-all-btn { background-color: #fd7e14; }
+                .batch-btn.hide-all-btn:hover { background-color: #e06200; }
                 .destructive-actions {
                     display: flex;
                     gap: 10px;
@@ -722,6 +740,48 @@ app.get('/manage-photos', (req, res) => {
                         gap: 12px;
                     }
                 }
+                
+                /* Fullscreen Overlay */
+                .fullscreen-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.9);
+                    z-index: 1000;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    cursor: pointer;
+                }
+                .fullscreen-content {
+                    max-width: 95vw;
+                    max-height: 95vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }
+                .fullscreen-content img, .fullscreen-content video {
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
+                    border-radius: 5px;
+                    cursor: default;
+                }
+                .close-btn-fullscreen {
+                    position: absolute;
+                    top: 20px;
+                    right: 35px;
+                    font-size: 40px;
+                    color: white;
+                    cursor: pointer;
+                    transition: color 0.2s;
+                    line-height: 1;
+                }
+                .close-btn-fullscreen:hover {
+                    color: #ccc;
+                }
             </style>
         </head>
         <body>
@@ -737,6 +797,16 @@ app.get('/manage-photos', (req, res) => {
                             ${sortLink('date_desc', '최신순')}
                             ${sortLink('date_asc', '오래된순')}
                             ${sortLink('name_asc', '이름순')}
+                        </div>
+                        <div class="batch-actions">
+                             <form action="/show-all-photos" method="post" style="margin: 0;">
+                                <input type="hidden" name="folderName" value="${folderName}">
+                                <button type="submit" class="batch-btn show-all-btn">모두 보이기</button>
+                            </form>
+                            <form action="/hide-all-photos" method="post" style="margin: 0;">
+                                <input type="hidden" name="folderName" value="${folderName}">
+                                <button type="submit" class="batch-btn hide-all-btn">모두 숨기기</button>
+                            </form>
                         </div>
                         <div class="destructive-actions">
                             <form action="/delete-all-photos" method="post" onsubmit="return confirm('이 폴더의 모든 사진을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.');" style="margin: 0;">
@@ -754,6 +824,60 @@ app.get('/manage-photos', (req, res) => {
                     ${photoListHtml}
                 </div>
             </div>
+
+            <div id="fullscreen-overlay" class="fullscreen-overlay" style="display: none;" onclick="closeFullscreen(event)">
+                <span class="close-btn-fullscreen" onclick="closeFullscreen()">&times;</span>
+                <div id="fullscreen-content" class="fullscreen-content"></div>
+            </div>
+
+            <script>
+                function openFullscreen(url, ext) {
+                    const overlay = document.getElementById('fullscreen-overlay');
+                    const content = document.getElementById('fullscreen-content');
+                    content.innerHTML = ''; // Clear previous content
+
+                    let element;
+                    const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov'];
+
+                    if (videoExtensions.includes(ext.toLowerCase())) {
+                        element = document.createElement('video');
+                        element.src = url;
+                        element.controls = true;
+                        element.autoplay = true;
+                        element.playsInline = true;
+                    } else {
+                        element = document.createElement('img');
+                        element.src = url;
+                    }
+
+                    element.onclick = (e) => e.stopPropagation(); // Prevent closing when clicking on the media
+                    content.appendChild(element);
+                    overlay.style.display = 'flex';
+                    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+                }
+
+                function closeFullscreen(event) {
+                    // Check if the click is on the overlay itself, not on the content
+                    if (event && event.target.id !== 'fullscreen-overlay' && event.target.className !== 'close-btn-fullscreen') {
+                        return;
+                    }
+                    const overlay = document.getElementById('fullscreen-overlay');
+                    const content = document.getElementById('fullscreen-content');
+                    overlay.style.display = 'none';
+                    content.innerHTML = ''; // Important: remove video/img to stop playback
+                    document.body.style.overflow = 'auto';
+                }
+
+                // Close fullscreen with Escape key
+                document.addEventListener('keydown', function(event) {
+                    if (event.key === "Escape") {
+                        const overlay = document.getElementById('fullscreen-overlay');
+                        if (overlay.style.display !== 'none') {
+                            closeFullscreen();
+                        }
+                    }
+                });
+            </script>
         </body>
         </html>
     `);
@@ -880,6 +1004,59 @@ app.post('/delete-folder', (req, res) => {
         res.redirect('/');
     });
 });
+
+// Helper function to rename all photos in a folder
+function renameAllPhotosInFolder(folderPath, showAll) {
+    if (!fs.existsSync(folderPath)) return;
+    const files = fs.readdirSync(folderPath);
+
+    files.forEach(file => {
+        const oldPath = path.join(folderPath, file);
+        try {
+            const stats = fs.statSync(oldPath);
+            if (stats.isFile()) {
+                const isHidden = file.startsWith('!');
+                let newFile = file;
+
+                if (showAll && isHidden) {
+                    newFile = file.substring(1);
+                } else if (!showAll && !isHidden) {
+                    newFile = '!' + file;
+                }
+
+                if (newFile !== file) {
+                    const newPath = path.join(folderPath, newFile);
+                    fs.renameSync(oldPath, newPath);
+                }
+            }
+        } catch (e) {
+            console.error(`Failed to process file ${oldPath}:`, e);
+        }
+    });
+}
+
+// Route for showing all photos in a folder
+app.post('/show-all-photos', (req, res) => {
+    const { folderName } = req.body;
+    if (!folderName) return res.redirect('/');
+    const folderPath = path.join(uploadDir, folderName);
+    renameAllPhotosInFolder(folderPath, true);
+    exec('pm2 restart MagicMirror || pm2 restart mm', () => {
+        res.redirect('/manage-photos?folderName=' + encodeURIComponent(folderName));
+    });
+});
+
+// Route for hiding all photos in a folder
+app.post('/hide-all-photos', (req, res) => {
+    const { folderName } = req.body;
+    if (!folderName) return res.redirect('/');
+    const folderPath = path.join(uploadDir, folderName);
+    renameAllPhotosInFolder(folderPath, false);
+    exec('pm2 restart MagicMirror || pm2 restart mm', () => {
+        res.redirect('/manage-photos?folderName=' + encodeURIComponent(folderName));
+    });
+});
+
 
 app.listen(port, () => {
     console.log(`✅ 업로드 서버가 ${port} 포트에서 실행 중입니다.`);
