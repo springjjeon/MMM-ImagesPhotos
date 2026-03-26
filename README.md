@@ -81,6 +81,7 @@ Add the following configuration to the `modules` array in your `config/config.js
 | `imageEffects` | An array of animation effects to apply to the images. See the list of available effects below. | `["ip-zoom", ...]` |
 | `debugToConsole` | If `true`, prints detailed logs to the browser console and terminal for debugging. | `true` |
 | `enableVideoPlayback` | If `true`, enables video playback from supported formats (mp4, webm, ogg, mov). If `false`, only image files are displayed. | `true` |
+| `videoPlaybackMultiplier` | Multiplier for video display duration relative to images. For example, `1.5` means videos are shown 1.5× longer than the `updateInterval`. | `1.5` |
 
 #### Transition Timing
 
@@ -117,11 +118,33 @@ This module supports video playback from the same directory as your images. Supp
 
 ### How it Works
 
-- **Video Duration Control:** Videos are displayed for the same duration as images (controlled by `updateInterval`).
-  - If a video is **shorter** than the display duration, it will **loop** automatically.
-  - If a video is **longer** than the display duration, it will start from a **random point** in the video.
+- **Video Duration Control:** Videos can be displayed longer than images using the `videoPlaybackMultiplier` setting.
+  - By default, `videoPlaybackMultiplier` is `1.5`, meaning videos are shown 1.5× longer than images.
+  - If a video is **shorter** than the calculated display duration, it will **loop** automatically.
+  - If a video is **longer** than the calculated display duration, it will start from a **random point** in the video.
   
 - **Error Handling:** If a video fails to load or uses an unsupported codec/pixel format, the module automatically skips it and moves to the next image.
+
+### Configuring Video Display Duration
+
+To change how long videos are displayed relative to images, use the `videoPlaybackMultiplier` setting:
+
+```javascript
+{
+    module: "MMM-ImagesPhotos",
+    position: "fullscreen_below",
+    config: {
+        path: "uploads/",
+        updateInterval: 5000,           // Images shown for 5 seconds
+        videoPlaybackMultiplier: 1.5    // Videos shown for 7.5 seconds (5000 × 1.5)
+    }
+},
+```
+
+**Common examples:**
+- `videoPlaybackMultiplier: 1` — Videos and images shown for the same duration
+- `videoPlaybackMultiplier: 1.5` — Videos shown 1.5× longer (default)
+- `videoPlaybackMultiplier: 2` — Videos shown 2× longer
 
 ### Disabling Video Playback
 

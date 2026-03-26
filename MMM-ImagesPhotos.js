@@ -24,6 +24,7 @@ Module.register(ourModuleName, {
     sequential: false
     ,debugToConsole: true
     ,enableVideoPlayback: true // 동영상 재생 여부 설정 (true: 재생, false: 이미지만)
+    ,videoPlaybackMultiplier: 1.5 // 동영상 재생 시간을 사진보다 몇 배 길게 할지 (1.5 = 1.5배, 2 = 2배 등)
     ,imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
@@ -387,7 +388,8 @@ Module.register(ourModuleName, {
 
   handleVideoPlayback(video, photoImage) {
     const self = this;
-    const displayDuration = this.config.updateInterval;
+    // 동영상 재생 시간 = 사진 표시 시간 × videoPlaybackMultiplier
+    const displayDuration = this.config.updateInterval * this.config.videoPlaybackMultiplier;
     let videoLoadTimeout = null;
     let isVideoFailed = false;
 
