@@ -17,13 +17,21 @@ const uploadDir = path.join(__dirname, baseFolderName);
 app.use('/uploads', express.static(uploadDir));
 
 const subFolderName = 'mobileUpload'; // 스마트폰에서 올린 사진이 모일 하위 폴더
-const baseMobileUploadDir = path.join(uploadDir, subFolderName);
+const hiddenSubFolderName = '!' + subFolderName;
 
-// 업로드할 기본 폴더가 없으면 자동으로 생성
+// mobileUpload 또는 !mobileUpload 중 우선순위로 사용할 폴더 결정
+let baseMobileUploadDir = path.join(uploadDir, subFolderName);
+const baseMobileUploadDirHidden = path.join(uploadDir, hiddenSubFolderName);
+if (!fs.existsSync(baseMobileUploadDir) && fs.existsSync(baseMobileUploadDirHidden)) {
+    baseMobileUploadDir = baseMobileUploadDirHidden;
+}
+
+// 업로드할 기본 폴더가 없으면 기본(visible)으로 생성
 if (!fs.existsSync(baseMobileUploadDir)) {
     fs.mkdirSync(baseMobileUploadDir, { recursive: true });
     console.log(`✅ [${baseFolderName}/${subFolderName}] 폴더가 생성되었습니다.`);
 }
+
 
 // 파일 업로드 설정
 const storage = multer.diskStorage({
@@ -203,7 +211,8 @@ app.get('/', (req, res) => {
                 <h2>📸 매직미러 사진 올리기</h2>
                 <form action="/upload" method="post" enctype="multipart/form-data">
                     <p style="color: #666; font-size: 14px;">한 번에 여러 장을 선택할 수 있습니다.</p>
-                    <input type="file" name="photos" accept="image/*" multiple required>
+                    <input type="file" name="photos" accept="image/*,video/*" multiple required>
+                    <p style="color: #666; font-size: 12px; margin-top: 8px;">지원 확장자: jpg, png, gif, heic, mp4, webm, ogg, mov</p>
                     <button type="submit" class="upload-btn">전송하기 🚀</button>
                 </form>
             </div>
@@ -259,24 +268,80 @@ app.post('/upload', upload.array('photos', 50), (req, res) => {
     });
 });
 
+// 폴더와 모든 하위폴더를 숨기는 재귀 함수
+function hideAllSubfolders(dirPath) {
+    if (!fs.existsSync(dirPath)) return;
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+        const fullPath = path.join(dirPath, item);
+        if (fs.statSync(fullPath).isDirectory()) {
+            // 하위 폴더 먼저 처리
+            hideAllSubfolders(fullPath);
+            
+            // 현재 폴더 숨기기
+            const isHidden = item.startsWith('!');
+            if (!isHidden) {
+                const newItem = '!' + item;
+                try {
+                    fs.renameSync(fullPath, path.join(dirPath, newItem));
+                } catch (e) {
+                    console.error('하위 폴더 숨기기 실패:', e);
+                }
+            }
+        }
+    }
+}
+
 // 폴더 보이기/숨기기 상태 변경 로직
 app.post('/toggle-folder', (req, res) => {
     const { folderName } = req.body;
     if (!folderName) return res.redirect('/');
 
-    const oldPath = path.join(uploadDir, folderName);
+    let oldPath = path.join(uploadDir, folderName);
     if (!fs.existsSync(oldPath)) return res.redirect('/');
 
     const parentDir = path.dirname(oldPath);
     const baseName = path.basename(oldPath);
 
+    const makeVisible = baseName.startsWith('!');
+
+    // 숨김 해제 시 상위 폴더도 모두 보이도록 처리
+    if (makeVisible) {
+        let parentToUse = parentDir;
+        let currentDir = parentToUse;
+
+        while (currentDir && currentDir.startsWith(uploadDir) && currentDir !== uploadDir) {
+            const currentBase = path.basename(currentDir);
+            if (currentBase.startsWith('!')) {
+                const newCurrentDir = path.join(path.dirname(currentDir), currentBase.substring(1));
+                try {
+                    fs.renameSync(currentDir, newCurrentDir);
+                    if (currentDir === parentToUse) {
+                        parentToUse = newCurrentDir;
+                    }
+                } catch (e) {
+                    console.error('상위 폴더 보이기 처리 실패:', e);
+                }
+                currentDir = path.dirname(newCurrentDir);
+            } else {
+                currentDir = path.dirname(currentDir);
+            }
+        }
+
+        oldPath = path.join(parentToUse, baseName);
+    } else {
+        // 숨김 처리 시 모든 하위 폴더도 숨기기
+        hideAllSubfolders(oldPath);
+    }
+
     let newBaseName = baseName;
-    if (baseName.startsWith('!')) {
+    if (makeVisible) {
         newBaseName = baseName.substring(1); // 숨김 기호 제거 (보이기)
     } else {
         newBaseName = '!' + baseName; // 숨김 기호 추가 (숨기기)
     }
-    const newPath = path.join(parentDir, newBaseName);
+
+    const newPath = path.join(path.dirname(oldPath), newBaseName);
 
     try {
         fs.renameSync(oldPath, newPath);
@@ -344,7 +409,7 @@ app.get('/manage-photos', (req, res) => {
 
     const files = fs.readdirSync(folderPath);
     
-    const imageFiles = files.map(file => {
+    const mediaFiles = files.map(file => {
         try {
             const filePath = path.join(folderPath, file);
             const stats = fs.statSync(filePath);
@@ -356,11 +421,11 @@ app.get('/manage-photos', (req, res) => {
     }).filter(fileInfo => {
         if (!fileInfo) return false;
         const ext = path.extname(fileInfo.name).toLowerCase();
-        return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+        return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.ogg', '.mov'].includes(ext);
     });
 
     // 정렬 로직
-    imageFiles.sort((a, b) => {
+    mediaFiles.sort((a, b) => {
         switch (sortBy) {
             case 'name_asc':
                 return a.name.localeCompare(b.name);
@@ -374,18 +439,31 @@ app.get('/manage-photos', (req, res) => {
         }
     });
 
-    let photoListHtml = imageFiles.map(fileInfo => {
+    let photoListHtml = mediaFiles.map(fileInfo => {
         const file = fileInfo.name;
         const isHidden = file.startsWith('!');
         const displayName = isHidden ? file.substring(1) : file;
         const encodedFolder = folderName.split(path.sep).map(p => encodeURIComponent(p)).join('/');
         const encodedFile = encodeURIComponent(file);
-        const imageUrl = `/uploads/${encodedFolder}/${encodedFile}`;
+        const fileUrl = `/uploads/${encodedFolder}/${encodedFile}`;
+        const ext = path.extname(file).toLowerCase();
+
+        let preview = '';
+        if (['.mp4', '.webm', '.ogg', '.mov'].includes(ext)) {
+            preview = `
+                <video class="photo-video" src="${fileUrl}" muted playsinline preload="metadata" loop>
+                    <source src="${fileUrl}" type="${ext === '.mov' ? 'video/quicktime' : 'video/' + ext.replace('.', '')}">
+                    지원되지 않는 플레이어입니다.
+                </video>
+            `;
+        } else {
+            preview = `<img src="${fileUrl}" loading="lazy" alt="${displayName}">`;
+        }
 
         return `
             <div class="photo-card ${isHidden ? 'is-hidden' : ''}">
                 <div class="photo-image-container">
-                    <img src="${imageUrl}" loading="lazy" alt="${displayName}">
+                    ${preview}
                     ${isHidden ? `<div class="hidden-overlay"><span class="hidden-icon">🙈</span></div>` : ''}
                 </div>
                 <div class="photo-info">
@@ -399,7 +477,7 @@ app.get('/manage-photos', (req, res) => {
                             ${isHidden ? '보이기' : '숨기기'}
                         </button>
                     </form>
-                    <form action="/delete-photo" method="post" onsubmit="return confirm('정말 이 사진을 삭제하시겠습니까?');" style="margin:0;">
+                    <form action="/delete-photo" method="post" onsubmit="return confirm('정말 이 파일을 삭제하시겠습니까?');" style="margin:0;">
                         <input type="hidden" name="folderName" value="${folderName}">
                         <input type="hidden" name="fileName" value="${file}">
                         <button type="submit" class="action-btn delete-btn">삭제</button>
@@ -409,8 +487,8 @@ app.get('/manage-photos', (req, res) => {
         `;
     }).join('');
 
-    if (imageFiles.length === 0) {
-        photoListHtml = '<p class="no-photos-message">이 폴더에는 사진이 없습니다.</p>';
+    if (mediaFiles.length === 0) {
+        photoListHtml = '<p class="no-photos-message">이 폴더에는 해당 미디어 파일이 없습니다.</p>';
     }
 
     const displayName = folderName.replace(/!/g, '').split(path.sep).join(' / ');
@@ -553,13 +631,18 @@ app.get('/manage-photos', (req, res) => {
                     width: 100%;
                     padding-top: 75%; /* 4:3 Aspect Ratio */
                 }
-                .photo-image-container img {
+                .photo-image-container img,
+                .photo-image-container video {
                     position: absolute;
                     top: 0;
                     left: 0;
                     width: 100%;
                     height: 100%;
                     object-fit: cover;
+                }
+                .photo-image-container video {
+                    object-fit: contain;
+                    background-color: black;
                 }
                 .hidden-overlay {
                     position: absolute;

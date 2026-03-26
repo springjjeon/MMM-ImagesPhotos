@@ -168,15 +168,26 @@ module.exports = NodeHelper.create({
         face: null
       };
 
+      const mediaType = mime.lookup(imagePath);
+      const isVideo = mediaType && mediaType.startsWith("video/");
+
       try {
-        // Process EXIF and GPS if enabled
-        if (this.config[id].showExif) {
-          try {
-            const fileBuffer = fs.readFileSync(imagePath);
-            const parser = exifParser.create(fileBuffer);
-            photoObject.exif = parser.parse();
-          } catch (error) {
-            console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
+        // Process EXIF and GPS only for images.
+        if (!isVideo && this.config[id].showExif) {
+          if (mediaType === "image/jpeg" || mediaType === "image/jpg" || mediaType === "image/tiff") {
+            try {
+              const fileBuffer = fs.readFileSync(imagePath);
+              const parser = exifParser.create(fileBuffer);
+              photoObject.exif = parser.parse();
+            } catch (error) {
+              console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
+            }
+          } else {
+            // PNG 등 EXIF 정보를 지원하지 않는 이미지 포맷은 스킵
+            if (this.config[id].debugToConsole) {
+              console.log(`[MMM-ImagesPhotos] Skipping EXIF parse for unsupported mime type: ${mediaType} (${photo.path})`);
+            }
+            photoObject.exif = null;
           }
 
           if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
@@ -191,8 +202,8 @@ module.exports = NodeHelper.create({
           }
         }
 
-        // Process face detection
-        if (this.config[id].faceDetection) {
+        // Process face detection only for images
+        if (!isVideo && this.config[id].faceDetection) {
           photoObject.face = await this.runFaceDetection(imagePath, id);
         }
 
@@ -239,7 +250,7 @@ module.exports = NodeHelper.create({
   getImages(files, id) {
     console.log(`gp id=${id}`);
     const images = [];
-    const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/heic"];
+    const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/heic", "video/mp4", "video/webm", "video/ogg", "video/mov"];
 
     for (const idx in files) {
       if (idx in files) {

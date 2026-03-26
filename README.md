@@ -80,6 +80,7 @@ Add the following configuration to the `modules` array in your `config/config.js
 | `backgroundColor` | **Fullscreen only.** Background color to show behind the image if `fill` is `false`. | `"black"` |
 | `imageEffects` | An array of animation effects to apply to the images. See the list of available effects below. | `["ip-zoom", ...]` |
 | `debugToConsole` | If `true`, prints detailed logs to the browser console and terminal for debugging. | `true` |
+| `enableVideoPlayback` | If `true`, enables video playback from supported formats (mp4, webm, ogg, mov). If `false`, only image files are displayed. | `true` |
 
 #### Transition Timing
 
@@ -109,6 +110,33 @@ You can fine-tune the display sequence with these settings (all in milliseconds)
 - `ip-pan-diag-bl-tr`
 - `ip-pan-diag-br-tl`
 - `ip-face-zoom` (requires `faceDetection: true`)
+
+## Video Playback
+
+This module supports video playback from the same directory as your images. Supported formats include **mp4, webm, ogg, and mov**.
+
+### How it Works
+
+- **Video Duration Control:** Videos are displayed for the same duration as images (controlled by `updateInterval`).
+  - If a video is **shorter** than the display duration, it will **loop** automatically.
+  - If a video is **longer** than the display duration, it will start from a **random point** in the video.
+  
+- **Error Handling:** If a video fails to load or uses an unsupported codec/pixel format, the module automatically skips it and moves to the next image.
+
+### Disabling Video Playback
+
+If you want to display **only images** and skip video files, set `enableVideoPlayback` to `false`:
+
+```javascript
+{
+    module: "MMM-ImagesPhotos",
+    position: "fullscreen_below",
+    config: {
+        path: "uploads/",
+        enableVideoPlayback: false  // Only show images
+    }
+},
+```
 
 ## Changelog
 
