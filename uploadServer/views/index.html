@@ -94,6 +94,15 @@
             <button type="submit" class="upload-btn">전송하기 🚀</button>
         </form>
     </div>
+
+    <div class="container" style="padding-top: 20px; padding-bottom: 20px; text-align: left;">
+        <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">⚙️ 시스템 관리</h3>
+        <form action="/manage/restart-mm" method="post" onsubmit="return confirm('MagicMirror를 재시작하시겠습니까?');">
+            <button type="submit" class="toolbar-btn" style="background-color: #6c757d; width: auto; padding: 12px 20px;">
+                🔄 MagicMirror 재시작
+            </button>
+        </form>
+    </div>
     
     {{folderListHtml}}
 

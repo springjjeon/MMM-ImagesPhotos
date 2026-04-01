@@ -159,6 +159,18 @@ function createManagementRouter(uploadDir) {
         restartMagicMirror(() => res.redirect(`/manage/photos?folderName=${encodeURIComponent(folderName)}`));
     });
 
+    // --- System Management ---
+    router.post('/restart-mm', (req, res) => {
+        console.log('[MMM-ImagesPhotos] Manual restart of MagicMirror requested via web interface.');
+        restartMagicMirror(() => {
+            // Redirect back to the main page after a short delay
+            // to allow the restart command to propagate.
+            setTimeout(() => {
+                res.redirect('/');
+            }, 1000);
+        });
+    });
+
     return router;
 }
 
