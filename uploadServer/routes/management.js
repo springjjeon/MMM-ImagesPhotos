@@ -1,13 +1,14 @@
-
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
+const fs =require('fs');
+const { exec } = require('child_process');
 const fileUtils = require('../lib/file-utils');
 const { restartMagicMirror } = require('../lib/process-utils');
 const { render } = require('../lib/view-renderer');
 
 function createManagementRouter(uploadDir) {
     const router = express.Router();
+    let isConversionRunning = false;
 
     // --- Folder Management ---
 
@@ -212,6 +213,35 @@ function createManagementRouter(uploadDir) {
     });
 
     // --- System Management ---
+    router.post('/convert-all-videos', (req, res) => {
+        if (isConversionRunning) {
+            console.warn('[MMM-ImagesPhotos] Video conversion is already in progress.');
+            // Optionally, add a query param to inform the user
+            return res.redirect('/?status=conversion_running');
+        }
+
+        console.log('[MMM-ImagesPhotos] Manual conversion of all videos requested.');
+        isConversionRunning = true;
+
+        const scriptPath = path.resolve(__dirname, '../../convert_videos.sh');
+        const command = `/bin/bash "${scriptPath}"`;
+
+        exec(command, (error, stdout, stderr) => {
+            isConversionRunning = false; // Reset the flag
+            if (error) {
+                console.error(`[MMM-ImagesPhotos] Video conversion script failed: ${error.message}`);
+                return;
+            }
+            if (stderr) {
+                console.warn(`[MMM-ImagesPhotos] Video conversion script produced errors: ${stderr}`);
+            }
+            console.log(`[MMM-ImagesPhotos] Video conversion script finished successfully:\n${stdout}`);
+        });
+
+        // Redirect immediately, don't wait for the script to finish
+        res.redirect('/?status=conversion_started');
+    });
+
     router.post('/restart-mm', (req, res) => {
         console.log('[MMM-ImagesPhotos] Manual restart of MagicMirror requested via web interface.');
         restartMagicMirror((err) => {

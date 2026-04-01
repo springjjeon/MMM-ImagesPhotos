@@ -91,10 +91,15 @@
 
     <div class="container" style="padding-top: 20px; padding-bottom: 20px; text-align: left;">
         <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">⚙️ 시스템 관리</h3>
-        <div id="restart-container">
+        <div id="restart-container" style="display: flex; align-items: flex-start; gap: 10px;">
             <button type="button" id="restart-mm-btn" class="toolbar-btn" style="background-color: #6c757d; width: auto; padding: 12px 20px;">
                 🔄 MagicMirror 재시작
             </button>
+            <form action="/manage/convert-all-videos" method="post" onsubmit="return confirm('모든 동영상을 검사하고 필요한 경우 변환합니다. 시스템에 부하를 줄 수 있으며, 시간이 다소 걸릴 수 있습니다. 계속하시겠습니까?');">
+                <button type="submit" class="toolbar-btn" style="background-color: #fd7e14; width: auto; padding: 12px 20px;">
+                    📹 모든 동영상 변환
+                </button>
+            </form>
             <p id="restart-status" style="display: none; color: #333; margin-top: 10px; font-weight: 500;"></p>
         </div>
     </div>
@@ -102,6 +107,25 @@
     {{folderListHtml}}
 
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle status notifications from redirects
+            const urlParams = new URLSearchParams(window.location.search);
+            const status = urlParams.get('status');
+            if (status) {
+                let message = '';
+                if (status === 'conversion_started') {
+                    message = '동영상 변환 작업이 백그라운드에서 시작되었습니다. 완료되면 서버 로그를 확인하세요.';
+                } else if (status === 'conversion_running') {
+                    message = '이미 동영상 변환 작업이 진행 중입니다.';
+                }
+                if (message) {
+                    alert(message);
+                }
+                // Clean the URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        });
+
         const folderSelect = document.getElementById('folderSelect');
         const customFolderInput = document.getElementById('customFolder');
         const customFolderContainer = document.getElementById('customFolderContainer');
