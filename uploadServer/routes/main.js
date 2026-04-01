@@ -1,7 +1,7 @@
-
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const { getDirectories } = require('../lib/file-utils');
 const { cleanFileNames, restartMagicMirror } = require('../lib/process-utils');
 const { render } = require('../lib/view-renderer');
@@ -112,186 +112,148 @@ function createMainRouter(uploadDir, upload, tempUploadDir) {
         console.log(`\n📤 Upload request received`);
         console.log(`Files: ${req.files ? req.files.length : 0}`);
         console.log(`Body:`, req.body);
-        
+
         const customFolder = (req.body.customFolder || '').trim();
         const selectedFolder = (req.body.folderName || '').trim();
-        
+
         if (!req.files || req.files.length === 0) {
             console.error('❌ No files received');
             return res.status(400).send('<h1>❌ 파일이 업로드되지 않았습니다.</h1>');
         }
-        
+
         let targetPath;
         let displayName;
-        let tempDir = null;
-        
-        // 사용자가 폴더를 선택하거나 새 폴더명을 입력한 경우
+
+        // Determine target path for upload
         if (customFolder || selectedFolder) {
             const targetFolder = customFolder || selectedFolder;
             targetPath = path.join(uploadDir, targetFolder);
             displayName = targetFolder;
-            
-            console.log(`📁 Target folder (custom): ${targetPath}`);
-            
-            // 대상 폴더 생성 (필요시)
-            try {
-                if (!fs.existsSync(targetPath)) {
-                    fs.mkdirSync(targetPath, { recursive: true });
-                    console.log(`✅ Created folder: ${targetPath}`);
-                }
-            } catch (err) {
-                console.error(`❌ Failed to create folder: ${targetPath}`, err);
-                return res.status(500).send('<h1>❌ 폴더 생성 실패</h1><p>' + err.message + '</p>');
-            }
         } else {
-            // 선택하지 않은 경우: 기본값 mobileUpload의 YYYY-MM 날짜 폴더에 저장
             const now = new Date();
             const yearMonthFolder = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            
             const baseMobileUploadDir = path.join(uploadDir, 'mobileUpload');
             const hiddenMobileUploadDir = path.join(uploadDir, '!mobileUpload');
-            
             const basePath = fs.existsSync(baseMobileUploadDir) ? baseMobileUploadDir : hiddenMobileUploadDir;
             const normalPath = path.join(basePath, yearMonthFolder);
             const hiddenPath = path.join(basePath, '!' + yearMonthFolder);
-            
             targetPath = fs.existsSync(hiddenPath) ? hiddenPath : normalPath;
             displayName = `mobileUpload/${yearMonthFolder}`;
-            
-            console.log(`📁 Target folder (default): ${targetPath}`);
-            
-            // 날짜 폴더 생성
-            try {
-                if (!fs.existsSync(targetPath)) {
-                    fs.mkdirSync(targetPath, { recursive: true });
-                    console.log(`✅ Created date folder: ${targetPath}`);
-                }
-            } catch (err) {
-                console.error(`❌ Failed to create date folder: ${targetPath}`, err);
-                return res.status(500).send('<h1>❌ 폴더 생성 실패</h1><p>' + err.message + '</p>');
-            }
         }
         
-        // 임시 위치에서 대상 폴더로 파일 이동
-        console.log(`📋 Processing ${req.files.length} files...`);
-        console.log(`Temp folder: ${tempUploadDir}`);
+        console.log(`📁 Target folder: ${targetPath}`);
+
+        // Create target directory if it doesn't exist
+        try {
+            if (!fs.existsSync(targetPath)) {
+                fs.mkdirSync(targetPath, { recursive: true });
+                console.log(`✅ Created folder: ${targetPath}`);
+            }
+        } catch (err) {
+            console.error(`❌ Failed to create folder: ${targetPath}`, err);
+            return res.status(500).send('<h1>❌ 폴더 생성 실패</h1><p>' + err.message + '</p>');
+        }
+
         let movedCount = 0;
         let failedCount = 0;
-        
+        const conversionResults = [];
+
+        // Process each file: move and then convert if it's a video
         req.files.forEach((file, index) => {
             const oldPath = file.path;
             const fileName = file.originalname;
-            const newPath = path.join(targetPath, path.basename(oldPath));
-            
-            console.log(`  [${index + 1}/${req.files.length}] ${fileName}`);
-            console.log(`    From: ${oldPath}`);
-            console.log(`    To:   ${newPath}`);
+            // The final path for the file after potential conversion
+            const baseName = path.basename(oldPath);
+            const finalName = fileName.toLowerCase().endsWith('.mov')
+                ? baseName.replace(/\.[^/.]+$/, "") + ".mp4"
+                : baseName;
+            const newPath = path.join(targetPath, finalName);
+            const originalNewPath = path.join(targetPath, baseName);
+
+            console.log(`  [${index + 1}/${req.files.length}] Processing ${fileName}`);
             
             try {
-                // 파일 존재 확인
                 if (!fs.existsSync(oldPath)) {
-                    console.error(`    ❌ Source file not found`);
+                    console.error(`    ❌ Source file not found: ${oldPath}`);
                     failedCount++;
                     return;
                 }
                 
-                // 파일 통계 확인
-                let fileSize = 'unknown';
-                try {
-                    const stats = fs.statSync(oldPath);
-                    fileSize = stats.size + ' bytes';
-                } catch (statErr) {
-                    console.warn(`    ⚠️  Could not read file stats: ${statErr.message}`);
-                }
-                console.log(`    File size: ${fileSize}`);
-                
-                // 파일 이동
-                fs.renameSync(oldPath, newPath);
-                
-                // 이동 확인 (약간의 지연 후 확인)
-                setImmediate(() => {
-                    if (fs.existsSync(newPath)) {
-                        console.log(`    ✅ Success`);
-                    } else {
-                        console.error(`    ⚠️  File move verification: file exists check inconclusive`);
-                    }
-                });
-                
+                // Move file from temp to target directory
+                fs.renameSync(oldPath, originalNewPath);
                 movedCount++;
-            } catch (err) {
-                console.error(`    ❌ Error: ${err.message}`);
-                failedCount++;
-                
-                // 임시 파일 삭제 시도
-                try {
-                    if (fs.existsSync(oldPath)) {
-                        fs.unlinkSync(oldPath);
-                        console.log(`    🗑️  Cleaned up temp file`);
+                console.log(`    ✅ Moved to: ${originalNewPath}`);
+
+                // If it's a video, run the conversion script
+                const videoExtensions = ['.mp4', '.mov'];
+                const fileExt = path.extname(fileName).toLowerCase();
+
+                if (videoExtensions.includes(fileExt)) {
+                    const scriptPath = path.resolve(__dirname, '../../convert_videos.sh');
+                    // We pass the path of the *moved* file to the script
+                    const command = `/bin/bash "${scriptPath}" "${originalNewPath}"`;
+                    
+                    console.log(`    🚀 Triggering synchronous video conversion...`);
+                    try {
+                        const output = execSync(command, { encoding: 'utf8' });
+                        const finalOutput = output.trim().split('\n').pop(); // Get the last line of output
+                        conversionResults.push({
+                            fileName,
+                            output: finalOutput,
+                            isError: false,
+                        });
+                        console.log(`    📝 Conversion result: ${finalOutput}`);
+                    } catch (error) {
+                        const errorMessage = `❌ Conversion failed: ${error.stderr || error.message}`;
+                        conversionResults.push({
+                            fileName,
+                            output: errorMessage,
+                            isError: true,
+                        });
+                        console.error(`    🔥 Conversion error for ${fileName}:`, error);
                     }
-                } catch (e) {
-                    console.error(`    ⚠️  Failed to clean up: ${e.message}`);
                 }
+            } catch (err) {
+                console.error(`    ❌ Error processing ${fileName}: ${err.message}`);
+                failedCount++;
             }
         });
-        
-        console.log(`\n✅ Upload completed: ${movedCount} success, ${failedCount} failed\n`);
-        
-        // 임시 폴더 정리 (재귀적 방식 사용 및 안전한 처리)
-        const cleanupTempFolder = () => {
-            try {
-                if (!fs.existsSync(tempUploadDir)) {
-                    return; // 폴더가 이미 없으면 무시
-                }
-                
-                const remainingFiles = fs.readdirSync(tempUploadDir).filter(f => !f.startsWith('.'));
-                
-                // 남은 파일이 있으면 삭제 시도
-                if (remainingFiles.length > 0) {
-                    remainingFiles.forEach(file => {
-                        try {
-                            const filePath = path.join(tempUploadDir, file);
-                            if (fs.existsSync(filePath)) {
-                                fs.unlinkSync(filePath);
-                                console.log(`🗑️  Removed leftover file: ${file}`);
-                            }
-                        } catch (err) {
-                            console.error(`⚠️  Failed to remove file: ${file}`, err.message);
-                        }
-                    });
-                }
-                
-                // 빈 폴더 삭제
-                if (fs.existsSync(tempUploadDir)) {
-                    const filesAfterCleanup = fs.readdirSync(tempUploadDir).filter(f => !f.startsWith('.'));
-                    if (filesAfterCleanup.length === 0) {
-                        fs.rmdirSync(tempUploadDir);
-                        console.log(`🗑️  Cleaned up temp folder`);
-                    }
-                }
-            } catch (e) {
-                console.warn(`⚠️  Failed to clean temp folder: ${e.message}`);
-                // 폴더 정리 실패는 무시 (다음 시작 시 재생성됨)
-            }
-        };
-        
-        // 파일 이동 완료 후 약간의 지연을 두고 정리 (안전성 강화)
-        setTimeout(cleanupTempFolder, 500);
 
-        // 업로드 후 리디렉션 또는 메시지 표시
+        console.log(`\n✅ Upload processing finished: ${movedCount} success, ${failedCount} failed`);
+
+        // If upload happened from a specific folder management page, redirect back
         if (selectedFolder) {
-            // 특정 폴더에서 업로드한 경우, 해당 폴더 관리 페이지로 리디렉션
             console.log(`Redirecting to /manage/photos?folderName=${encodeURIComponent(selectedFolder)}`);
             res.redirect(`/manage/photos?folderName=${encodeURIComponent(selectedFolder)}`);
         } else {
-            // 메인 페이지에서 업로드한 경우, 기존 성공 메시지 표시
+            // Otherwise, show the success page with conversion results
+            let conversionHtml = '';
+            if (conversionResults.length > 0) {
+                conversionHtml = `
+                    <div style="margin-top: 30px; padding: 20px; border-radius: 8px; background-color: #f7f7f7; text-align: left;">
+                        <h3 style="margin-top: 0; margin-bottom: 15px; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 10px;">📹 동영상 변환 결과</h3>
+                        <ul style="list-style-type: none; padding: 0; margin: 0; max-height: 200px; overflow-y: auto;">
+                `;
+                conversionResults.forEach(result => {
+                    const icon = result.output.includes('통과') ? '⚡' : (result.output.includes('완료') ? '✅' : '❌');
+                    conversionHtml += `
+                        <li style="padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px;">
+                            <strong style="color: ${result.isError ? '#d9534f' : '#333'};">${result.fileName}</strong>:
+                            <span style="margin-left: 5px;">${icon} ${result.output}</span>
+                        </li>`;
+                });
+                conversionHtml += '</ul></div>';
+            }
+
             const successHtml = `
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <div style="text-align:center; padding:50px; font-family: sans-serif;">
+                <div style="text-align:center; padding:40px 20px; font-family: sans-serif;">
                     <h1 style="color: #4CAF50;">✅ 업로드 완료!</h1>
                     <p>📁 저장 위치: <strong>${displayName}</strong></p>
-                    <p>성공: ${movedCount}개 파일 ${failedCount > 0 ? '/ 실패: ' + failedCount + '개' : ''}</p>
-                    <p style="margin-top: 20px;">매직미러를 재시작하고 있습니다... 🔄</p>
+                    <p>성공: ${movedCount}개 파일 ${failedCount > 0 ? `/ 실패: ${failedCount}개` : ''}</p>
+                    ${conversionHtml}
+                    <p style="margin-top: 30px;">매직미러를 재시작하고 있습니다... 🔄</p>
                     <br>
                     <a href="/" style="padding: 15px 30px; background: #333; color: white; text-decoration: none; border-radius: 10px; display: inline-block;">새로 올리기</a>
                 </div>
@@ -299,8 +261,7 @@ function createMainRouter(uploadDir, upload, tempUploadDir) {
             res.send(successHtml);
         }
 
-        // 백그라운드에서 파일명 정리 및 재시작 (비동기)
-        // 응답 전송 후에 진행하므로 사용자는 블로킹되지 않음
+        // Asynchronously clean file names and restart the mirror
         setImmediate(() => {
             cleanFileNames(() => {
                 restartMagicMirror(() => {
