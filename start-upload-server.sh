@@ -1,36 +1,43 @@
 #!/bin/bash
 
-# MMM-ImagesPhotos 업로드 서버 시작 스크립트
+# MMM-ImagesPhotos 업로드 서버 시작 스크립트 (PM2 기반)
 
-UPLOAD_SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UPLOAD_SERVER="$UPLOAD_SERVER_DIR/uploadServer/index.js"
-PID_FILE="/tmp/mmm-images-upload-server.pid"
+# 스크립트의 실제 경로를 기준으로 디렉터리 설정
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="mmm-images-upload-server"
+APP_SCRIPT="$APP_DIR/uploadServer/index.js"
 
-# 이미 실행 중인지 확인
-if [ -f "$PID_FILE" ]; then
-    OLD_PID=$(cat "$PID_FILE")
-    if kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "✅ Upload server is already running (PID: $OLD_PID)"
-        exit 0
-    fi
-fi
+echo "🚀 Starting or restarting upload server with PM2..."
 
-# 서버 시작
-echo "🚀 Starting upload server..."
-cd "$UPLOAD_SERVER_DIR"
-nohup node uploadServer/ > /tmp/mmm-images-upload.log 2>&1 &
-SERVER_PID=$!
-
-# PID를 파일에 저장
-echo $SERVER_PID > "$PID_FILE"
-
-# 포트 열림 확인
-sleep 2
-if nc -z localhost 8999 2>/dev/null; then
-    echo "✅ Upload server started successfully (PID: $SERVER_PID)"
-    echo "📷 Access: http://localhost:8999/"
-else
-    echo "❌ Failed to start upload server"
-    cat /tmp/mmm-images-upload.log
+# PM2가 설치되어 있는지 확인
+if ! command -v pm2 &> /dev/null
+then
+    echo "❌ PM2 is not installed."
+    echo "Please install it globally by running: npm install -g pm2"
     exit 1
 fi
+
+# PM2를 사용하여 앱 시작 또는 재시작
+# --watch: 파일 변경 시 자동 재시작
+# --ignore-watch: watch에서 제외할 폴더/파일 지정
+# --cwd: 실행 디렉토리 설정
+pm2 start "$APP_SCRIPT" \
+    --name "$APP_NAME" \
+    --watch \
+    --ignore-watch="**/node_modules" \
+    --ignore-watch="**/.git" \
+    --ignore-watch="**/uploads" \
+    --ignore-watch="**/mobileUpload" \
+    --cwd "$APP_DIR/uploadServer" \
+    --restart-delay 3000
+
+# 상태 확인
+echo ""
+pm2 list
+
+echo ""
+echo "✅ Upload server is now managed by PM2 under the name '$APP_NAME'."
+echo "📷 Access: http://<Your-MagicMirror-IP>:8999"
+echo "📜 To check logs, run: pm2 logs $APP_NAME"
+echo "🛑 To stop the server, run: pm2 stop $APP_NAME"
+echo "💾 To save the process list for automatic startup on boot, run: pm2 save"
