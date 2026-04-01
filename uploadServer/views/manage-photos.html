@@ -1,0 +1,464 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[{{displayName}}] 사진 관리</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .page-header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+        }
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .page-title {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 600;
+            word-break: break-all;
+        }
+        .back-link {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            white-space: nowrap;
+        }
+        .back-link:hover {
+            background: #5a6268;
+        }
+        .page-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding-top: 20px;
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .sorting-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .sorting-controls strong {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+        .sort-link {
+            text-decoration: none;
+            color: #007bff;
+            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            transition: background-color 0.2s, color 0.2s;
+            border: 1px solid #dee2e6;
+        }
+        .sort-link:hover {
+            background-color: #e9ecef;
+        }
+        .sort-link.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .batch-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .batch-btn {
+            padding: 10px 18px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .batch-btn.show-all-btn { background-color: #28a745; }
+        .batch-btn.show-all-btn:hover { background-color: #218838; }
+        .batch-btn.hide-all-btn { background-color: #fd7e14; }
+        .batch-btn.hide-all-btn:hover { background-color: #e06200; }
+        .destructive-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .destructive-btn {
+            padding: 10px 18px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .destructive-btn:hover {
+            background: #c82333;
+        }
+
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 25px;
+        }
+        .photo-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .photo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+        .photo-image-container {
+            position: relative;
+            width: 100%;
+            padding-top: 75%; /* 4:3 Aspect Ratio */
+        }
+        .photo-image-container img,
+        .photo-image-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .photo-image-container video {
+            object-fit: contain;
+            background-color: black;
+        }
+        .hidden-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .hidden-icon {
+            font-size: 40px;
+            opacity: 0.8;
+        }
+        .photo-info {
+            padding: 12px 15px;
+            flex-grow: 1;
+        }
+        .photo-filename {
+            font-size: 14px;
+            color: #333;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .photo-card.is-hidden .photo-filename {
+            text-decoration: line-through;
+            color: #999;
+        }
+        .photo-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 0 15px 15px 15px;
+        }
+        .action-btn {
+            width: 100%;
+            padding: 9px;
+            font-size: 13px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .action-btn:active {
+            transform: scale(0.97);
+        }
+        .toggle-btn.show-btn { background: #28a745; }
+        .toggle-btn.show-btn:hover { background: #218838; }
+        .toggle-btn.hide-btn { background: #fd7e14; }
+        .toggle-btn.hide-btn:hover { background: #e06200; }
+        .delete-btn { background: #dc3545; }
+        .delete-btn:hover { background: #c82333; }
+        .no-photos-message {
+            color: #666;
+            padding: 40px;
+            font-size: 16px;
+        }
+        @media (max-width: 768px) {
+            body { padding: 15px; }
+            .header-top { flex-direction: column; align-items: flex-start; gap: 15px; }
+            .page-actions { flex-direction: column; align-items: stretch; text-align: center; }
+            .destructive-actions { justify-content: center; }
+            .photo-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 15px;
+            }
+        }
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .photo-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+        }
+        
+        /* Fullscreen Overlay */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .fullscreen-content {
+            max-width: 95vw;
+            max-height: 95vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .fullscreen-content img, .fullscreen-content video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 5px;
+            cursor: default;
+        }
+        .close-btn-fullscreen {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+            transition: color 0.2s;
+            line-height: 1;
+        }
+        .close-btn-fullscreen:hover {
+            color: #ccc;
+        }
+
+        /* Upload Section Styles */
+        .upload-section {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+        }
+        .upload-form h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .upload-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-label {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .file-label:hover {
+            background-color: #0056b3;
+        }
+        .upload-btn {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .upload-btn:hover {
+            background: #218838;
+        }
+        .file-list {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="page-header">
+            <div class="header-top">
+                <h2 class="page-title">🖼️ {{displayName}}</h2>
+                <a href="/" class="back-link">⬅️ 뒤로 가기</a>
+            </div>
+            <div class="page-actions">
+                    <div class="sorting-controls">
+                    <strong>정렬:</strong>
+                    {{sortLinks}}
+                </div>
+                <div class="batch-actions">
+                        <form action="/manage/show-all-photos" method="post" style="margin: 0;">
+                        <input type="hidden" name="folderName" value="{{folderName}}">
+                        <button type="submit" class="batch-btn show-all-btn">모두 보이기</button>
+                    </form>
+                    <form action="/manage/hide-all-photos" method="post" style="margin: 0;">
+                        <input type="hidden" name="folderName" value="{{folderName}}">
+                        <button type="submit" class="batch-btn hide-all-btn">모두 숨기기</button>
+                    </form>
+                </div>
+                <div class="destructive-actions">
+                    <form action="/manage/delete-all-photos" method="post" onsubmit="return confirm('이 폴더의 모든 사진을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.');" style="margin: 0;">
+                        <input type="hidden" name="folderName" value="{{folderName}}">
+                        <button type="submit" class="destructive-btn">모든 사진 삭제</button>
+                    </form>
+                    <form action="/manage/delete-folder" method="post" onsubmit="return confirm('정말 이 폴더와 모든 하위 내용(사진, 하위 폴더)을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다!');" style="margin: 0;">
+                        <input type="hidden" name="folderName" value="{{folderName}}">
+                        <button type="submit" class="destructive-btn">폴더 삭제</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="upload-section">
+            <form action="/upload" method="post" enctype="multipart/form-data" class="upload-form">
+                <h3>📂 이 폴더에 사진/동영상 추가</h3>
+                <input type="hidden" name="folderName" value="{{folderName}}">
+                <div class="upload-controls">
+                    <input type="file" name="photos" id="photos" multiple required class="file-input">
+                    <label for="photos" class="file-label">파일 선택...</label>
+                    <button type="submit" class="upload-btn">업로드</button>
+                </div>
+                 <div id="file-list" class="file-list"></div>
+            </form>
+        </div>
+
+        <div class="photo-grid">
+            {{photoListHtml}}
+        </div>
+    </div>
+
+    <div id="fullscreen-overlay" class="fullscreen-overlay" style="display: none;" onclick="closeFullscreen(event)">
+        <span class="close-btn-fullscreen" onclick="closeFullscreen()">&times;</span>
+        <div id="fullscreen-content" class="fullscreen-content"></div>
+    </div>
+
+    <script>
+        function openFullscreen(url, ext) {
+            const overlay = document.getElementById('fullscreen-overlay');
+            const content = document.getElementById('fullscreen-content');
+            content.innerHTML = ''; // Clear previous content
+
+            let element;
+            const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov'];
+
+            if (videoExtensions.includes(ext.toLowerCase())) {
+                element = document.createElement('video');
+                element.src = url;
+                element.controls = true;
+                element.autoplay = true;
+                element.playsInline = true;
+            } else {
+                element = document.createElement('img');
+                element.src = url;
+            }
+
+            element.onclick = (e) => e.stopPropagation(); // Prevent closing when clicking on the media
+            content.appendChild(element);
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        }
+
+        function closeFullscreen(event) {
+            // Check if the click is on the overlay itself, not on the content
+            if (event && event.target.id !== 'fullscreen-overlay' && event.target.className !== 'close-btn-fullscreen') {
+                return;
+            }
+            const overlay = document.getElementById('fullscreen-overlay');
+            const content = document.getElementById('fullscreen-content');
+            overlay.style.display = 'none';
+            content.innerHTML = ''; // Important: remove video/img to stop playback
+            document.body.style.overflow = 'auto';
+        }
+
+        // Close fullscreen with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") {
+                const overlay = document.getElementById('fullscreen-overlay');
+                if (overlay.style.display !== 'none') {
+                    closeFullscreen();
+                }
+            }
+        });
+
+        // File upload list display
+        const fileInput = document.getElementById('photos');
+        const fileList = document.getElementById('file-list');
+        if (fileInput) {
+            fileInput.addEventListener('change', (event) => {
+                fileList.innerHTML = '';
+                if (event.target.files.length > 0) {
+                    const files = Array.from(event.target.files);
+                    const fileNames = files.map(f => f.name).join(', ');
+                    if (files.length > 3) {
+                         fileList.textContent = `선택된 파일: ${files.length}개`;
+                    } else {
+                         fileList.textContent = `선택된 파일: ${fileNames}`;
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

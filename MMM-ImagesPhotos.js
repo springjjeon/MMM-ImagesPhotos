@@ -24,7 +24,7 @@ Module.register(ourModuleName, {
     sequential: false
     ,debugToConsole: true
     ,enableVideoPlayback: true // 동영상 재생 여부 설정 (true: 재생, false: 이미지만)
-    ,videoPlaybackMultiplier: 1.5 // 동영상 재생 시간을 사진보다 몇 배 길게 할지 (1.5 = 1.5배, 2 = 2배 등)
+    ,videoPlaybackMultiplier: 1.2 // 동영상 재생 시간을 사진보다 몇 배 길게 할지 (1.5 = 1.5배, 2 = 2배 등)
     ,imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
@@ -122,6 +122,12 @@ Module.register(ourModuleName, {
     }
     if (notification === "SERVER_IP" && payload.id === this.identifier) {
       this.serverIp = payload.ip;
+    }
+    // 새 파일이 업로드되었을 때 자동으로 사진 목록 새로고침
+    if (notification === "PHOTOS_UPDATED" && payload.id === this.identifier) {
+      try { Log.log(`[MMM-ImagesPhotos] Photos updated, refreshing...`); } catch (e) {}
+      try { if (this.config && this.config.debugToConsole) console.log(`[MMM-ImagesPhotos] Photos updated, refreshing...`); } catch (e) {}
+      this.getPhotos();
     }
   },
 
