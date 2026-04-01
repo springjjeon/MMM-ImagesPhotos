@@ -334,6 +334,93 @@
             font-size: 14px;
             color: #555;
         }
+
+        /* Folder Management Section */
+        .folder-management-section {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        .folder-management-section h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: 600;
+            width: 100%;
+        }
+        .create-subfolder-container {
+            flex: 1;
+            min-width: 300px;
+        }
+        .subfolder-list-container {
+            flex: 2;
+            min-width: 300px;
+        }
+        .subfolder-list-container h4 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .subfolder-controls {
+            display: flex;
+            gap: 10px;
+        }
+        .subfolder-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .subfolder-btn {
+            padding: 10px 20px;
+            background: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .subfolder-btn:hover { background: #138496; }
+
+        .subfolder-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .subfolder-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #333;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            border: 1px solid #e9ecef;
+        }
+        .subfolder-link:hover {
+            background-color: #e9ecef;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .subfolder-icon { font-size: 24px; color: #5dade2; }
+        .subfolder-name {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .subfolder-link.is-hidden { opacity: 0.6; }
+        .subfolder-link.is-hidden .subfolder-name { text-decoration: line-through; }
     </style>
 </head>
 <body>
@@ -369,6 +456,20 @@
                     </form>
                 </div>
             </div>
+        </div>
+
+        <div class="folder-management-section">
+            <div class="create-subfolder-container">
+                <h3>🌱 하위 폴더 관리</h3>
+                <form action="/manage/create-subfolder" method="post" class="subfolder-form">
+                    <input type="hidden" name="parentFolder" value="{{folderName}}">
+                    <div class="subfolder-controls">
+                        <input type="text" name="subfolderName" required class="subfolder-input" placeholder="새 하위 폴더명 입력">
+                        <button type="submit" class="subfolder-btn">만들기</button>
+                    </div>
+                </form>
+            </div>
+            {{subfolderListHtml}}
         </div>
 
         <div class="upload-section">

@@ -14,15 +14,40 @@ function createMainRouter(uploadDir, upload, tempUploadDir) {
         try {
             const folders = await getDirectories(uploadDir);
             let folderListHtml = '';
+
+            // 'mobileUpload' 또는 '!mobileUpload' 중 사용 중인 폴더명 확인
+            const baseMobileUploadDir = path.join(uploadDir, 'mobileUpload');
+            const hiddenMobileUploadDir = path.join(uploadDir, '!mobileUpload');
+            const mobileUploadDirName = fs.existsSync(hiddenMobileUploadDir) && !fs.existsSync(baseMobileUploadDir)
+                ? '!mobileUpload'
+                : 'mobileUpload';
+
+            // 기본 업로드 폴더 (YYYY-MM) 경로 생성
+            const now = new Date();
+            const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const defaultFolderName = `${mobileUploadDirName.replace(/\\/g, '/')}/${yearMonth}`;
+
+            const visibleFolders = folders
+                .map(f => f.replace(/\\/g, '/')) // 경로 구분자 통일
+                .filter(f => !path.basename(f).startsWith('!'))
+                .sort();
             
-            // 드롭다운용 폴더 옵션 생성 (숨겨진 폴더 제외)
-            let folderOptions = folders
-                .filter(folder => !path.basename(folder).startsWith('!'))
-                .sort()
-                .map(folder => {
-                    const displayName = folder.split(path.sep).join(' / ');
-                    return `<option value="${folder}">${displayName}</option>`;
-                }).join('');
+            let folderOptions = '';
+            const defaultFolderExists = visibleFolders.includes(defaultFolderName);
+
+            // 1. 기본 폴더 옵션
+            const defaultDisplayName = `${defaultFolderName.split('/').join(' / ')} ${!defaultFolderExists ? '(새 폴더)' : ''}`;
+            folderOptions += `<option value="${defaultFolderName}" selected>${defaultDisplayName}</option>`;
+            
+            // 2. 다른 폴더 목록
+            visibleFolders.forEach(folder => {
+                if (folder === defaultFolderName) return; // Skip default, it's already added
+                const displayName = folder.split('/').join(' / ');
+                folderOptions += `<option value="${folder}">${displayName}</option>`;
+            });
+            
+            // 3. 직접 입력 옵션
+            folderOptions += `<option value="">-- 새 폴더 직접 입력 --</option>`;
 
             if (folders.length > 0) {
                 const folderItems = folders.map(folder => {
@@ -73,14 +98,6 @@ function createMainRouter(uploadDir, upload, tempUploadDir) {
                     </div>
                 `;
             }
-
-            // 'mobileUpload' 또는 '!mobileUpload' 중 사용 중인 폴더명 확인
-            const baseMobileUploadDir = path.join(uploadDir, 'mobileUpload');
-            const hiddenMobileUploadDir = path.join(uploadDir, '!mobileUpload');
-            const mobileUploadDirName = fs.existsSync(hiddenMobileUploadDir) && !fs.existsSync(baseMobileUploadDir)
-                ? '!mobileUpload'
-                : 'mobileUpload';
-
 
             const pageContent = render('index', { folderListHtml, folderOptions, mobileUploadDirName });
             res.send(pageContent);

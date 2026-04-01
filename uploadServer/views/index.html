@@ -69,24 +69,18 @@
             
             <!-- 폴더 선택 섹션 -->
             <div style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-radius: 8px; border: 1px solid #e0e0e0;">
-                <label style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">
+                <label for="folderSelect" style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">
                     📁 사진을 저장할 폴더 선택
                 </label>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <select name="folderName" id="folderSelect" style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px;">
-                        <option value="">-- 새 폴더 만들기 --</option>
+                <div style="margin-bottom: 10px;">
+                    <select name="folderName" id="folderSelect" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px;">
                         {{folderOptions}}
                     </select>
                 </div>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" name="customFolder" id="customFolder" placeholder="또는 새 폴더명 입력 (예: 영민이사진)"
-                           style="flex: 1; width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px;">
-                    <button type="button" id="createYearMonthFolder" title="오늘 날짜의 년-월 폴더 생성"
-                            style="padding: 0 15px; border: 1px solid #ccc; border-radius: 5px; background-color: #f0f0f0; cursor: pointer; font-size: 14px;">
-                        🗓️ YYYY-MM
-                    </button>
+                <div id="customFolderContainer" style="display: none;">
+                    <input type="text" name="customFolder" id="customFolder" placeholder="새 폴더명 입력 (예: 우리집 강아지)"
+                           style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px;">
                 </div>
-                <small style="display: block; color: #666; margin-top: 6px;">💡 팁: 새 폴더명을 입력하면 그 폴더에 저장됩니다</small>
             </div>
             
             <input type="file" name="photos" accept="image/*,video/*" multiple required>
@@ -110,7 +104,7 @@
     <script>
         const folderSelect = document.getElementById('folderSelect');
         const customFolderInput = document.getElementById('customFolder');
-        const createYearMonthBtn = document.getElementById('createYearMonthFolder');
+        const customFolderContainer = document.getElementById('customFolderContainer');
         const restartBtn = document.getElementById('restart-mm-btn');
         const restartStatus = document.getElementById('restart-status');
 
@@ -154,38 +148,22 @@
             });
         }
         
-        if (folderSelect && customFolderInput) {
-            // 드롭다운에서 폴더를 선택하면 사용자 정의 폴더 입력을 지웁니다.
-            folderSelect.addEventListener('change', () => {
-                if (folderSelect.value) {
-                    customFolderInput.value = '';
-                }
-            });
-
-            // 사용자 정의 폴더에 입력하면 드롭다운 선택을 지웁니다.
-            customFolderInput.addEventListener('input', () => {
-                if (customFolderInput.value) {
-                    folderSelect.value = '';
-                }
-            });
+        function toggleCustomFolderInput() {
+            if (folderSelect.value === '') {
+                customFolderContainer.style.display = 'block';
+                customFolderInput.focus();
+            } else {
+                customFolderContainer.style.display = 'none';
+                customFolderInput.value = '';
+            }
         }
-        
-        if (createYearMonthBtn && customFolderInput) {
-            // 'YYYY-MM' 버튼을 클릭하면 'mobileUpload/YYYY-MM' 형식의 폴더명을 생성합니다.
-            createYearMonthBtn.addEventListener('click', () => {
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                
-                // 서버에서 전달된 mobileUploadDirName 변수를 사용합니다.
-                const mobileUploadDir = '{{mobileUploadDirName}}';
-                const folderName = `${mobileUploadDir}/${year}-${month}`;
-                
-                customFolderInput.value = folderName;
-                if (folderSelect) {
-                    folderSelect.value = ''; // 드롭다운 선택 해제
-                }
-            });
+
+        if (folderSelect && customFolderInput && customFolderContainer) {
+            // 페이지 로드 시 초기 상태 확인
+            toggleCustomFolderInput();
+
+            // 드롭다운 변경 시 customFolder 입력 필드 표시/숨김
+            folderSelect.addEventListener('change', toggleCustomFolderInput);
         }
 
         // 하위 폴더 접기/펼치기 토글 함수

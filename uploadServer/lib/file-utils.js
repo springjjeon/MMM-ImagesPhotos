@@ -1,10 +1,31 @@
 
 const fs = require('fs');
 const path = require('path');
+const fsAsync = require('fs').promises;
 
 // --- Directory Operations ---
 
-const fsAsync = require('fs').promises;
+/**
+ * Gets subdirectories of a given directory (non-recursive).
+ * @param {string} dirPath - The full path to the directory.
+ * @returns {Promise<object[]>} - A promise resolving to an array of directory info objects {name, isHidden}.
+ */
+async function getSubdirectories(dirPath) {
+    try {
+        const items = await fsAsync.readdir(dirPath, { withFileTypes: true });
+        return items
+            .filter(item => item.isDirectory())
+            .map(item => ({
+                name: item.name,
+                isHidden: item.name.startsWith('!'),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically
+    } catch (error) {
+        // If directory doesn't exist or other error, return empty array
+        console.error(`Error reading subdirectories for ${dirPath}:`, error.message);
+        return [];
+    }
+}
 
 /**
  * Recursively gets all directory paths within a given directory asynchronously.
@@ -289,6 +310,7 @@ function renameAllPhotosInFolder(folderPath, showAll) {
 
 module.exports = {
     getDirectories,
+    getSubdirectories,
     toggleFolderVisibility,
     renameAllDirectories,
     deleteFolder,

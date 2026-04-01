@@ -43,9 +43,40 @@ function createManagementRouter(uploadDir) {
         restartMagicMirror(() => res.redirect('/'));
     });
 
+    router.post('/create-subfolder', (req, res) => {
+        const { parentFolder, subfolderName } = req.body;
+        
+        if (!parentFolder || !subfolderName || subfolderName.trim() === '') {
+            return res.status(400).send('<h1>❌ 잘못된 요청</h1><p>상위 폴더와 하위 폴더 이름이 모두 필요합니다.</p><a href="/">돌아가기</a>');
+        }
+    
+        const trimmedSubfolderName = subfolderName.trim();
+    
+        if (trimmedSubfolderName.includes('..') || trimmedSubfolderName.includes('/') || trimmedSubfolderName.includes('\\')) {
+            return res.status(400).send('<h1>❌ 잘못된 폴더명</h1><p>하위 폴더 이름에 `..`, `/`, `\\` 문자를 사용할 수 없습니다.</p><a href="/">돌아가기</a>');
+        }
+        
+        try {
+            const newFolderPath = path.join(uploadDir, parentFolder, trimmedSubfolderName);
+    
+            if (!fs.existsSync(newFolderPath)) {
+                fs.mkdirSync(newFolderPath, { recursive: true });
+                console.log(`✅ Subfolder created: ${newFolderPath}`);
+            } else {
+                console.warn(`Subfolder "${newFolderPath}" already exists.`);
+            }
+            
+            res.redirect(`/manage/photos?folderName=${encodeURIComponent(parentFolder)}`);
+    
+        } catch (error) {
+            console.error('Error creating subfolder:', error);
+            res.status(500).send('<h1>❌ 오류</h1><p>하위 폴더를 생성하는 중 오류가 발생했습니다.</p><a href="/">돌아가기</a>');
+        }
+    });
+
     // --- Photo Management (within a folder) ---
 
-    router.get('/photos', (req, res) => {
+    router.get('/photos', async (req, res) => {
         const { folderName, sortBy = 'date_desc' } = req.query;
         console.log(`\n📋 /photos request`);
         console.log(`  folderName: ${folderName}`);
@@ -67,11 +98,31 @@ function createManagementRouter(uploadDir) {
         }
 
         const mediaFiles = fileUtils.getMediaFiles(folderPath, sortBy);
-        console.log(`  📁 Found ${mediaFiles.length} files`);
-        
-        if (mediaFiles.length > 0) {
-            mediaFiles.slice(0, 3).forEach(f => console.log(`    - ${f.name}`));
-            if (mediaFiles.length > 3) console.log(`    ... and ${mediaFiles.length - 3} more`);
+        const subdirectories = await fileUtils.getSubdirectories(folderPath);
+
+        let subfolderListHtml = '';
+        if (subdirectories.length > 0) {
+            const items = subdirectories.map(sub => {
+                const isHidden = sub.isHidden;
+                const displayName = isHidden ? sub.name.substring(1) : sub.name;
+                const subfolderRelativePath = path.join(folderName, sub.name).replace(/\\/g, '/');
+                
+                return `
+                    <a href="/manage/photos?folderName=${encodeURIComponent(subfolderRelativePath)}" class="subfolder-link ${isHidden ? 'is-hidden' : ''}">
+                        <div class="subfolder-icon">📁</div>
+                        <div class="subfolder-name" title="${displayName}">${displayName}</div>
+                    </a>
+                `;
+            }).join('');
+
+            subfolderListHtml = `
+                <div class="subfolder-list-container">
+                    <h4>📂 하위 폴더</h4>
+                    <div class="subfolder-grid">
+                        ${items}
+                    </div>
+                </div>
+            `;
         }
 
         const photoListHtml = mediaFiles.length > 0 ? mediaFiles.map(fileInfo => {
@@ -117,6 +168,7 @@ function createManagementRouter(uploadDir) {
             displayName: folderName.replace(/!/g, '').split(path.sep).join(' / '),
             folderName: folderName,
             sortLinks: sortLinks,
+            subfolderListHtml: subfolderListHtml,
             photoListHtml: photoListHtml,
         });
 
