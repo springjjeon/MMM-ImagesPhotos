@@ -162,12 +162,13 @@ function createManagementRouter(uploadDir) {
     // --- System Management ---
     router.post('/restart-mm', (req, res) => {
         console.log('[MMM-ImagesPhotos] Manual restart of MagicMirror requested via web interface.');
-        restartMagicMirror(() => {
-            // Redirect back to the main page after a short delay
-            // to allow the restart command to propagate.
-            setTimeout(() => {
-                res.redirect('/');
-            }, 1000);
+        restartMagicMirror((err) => {
+            if (err) {
+                console.error('[MMM-ImagesPhotos] Restart failed:', err.message);
+                res.status(500).json({ success: false, message: 'Failed to restart MagicMirror.' });
+            } else {
+                res.json({ success: true, message: 'MagicMirror restart initiated.' });
+            }
         });
     });
 
