@@ -59,6 +59,27 @@
         .toggle-btn.show-btn:hover { background: #218838; }
         .toggle-btn.hide-btn { background: #fd7e14; }
         .toggle-btn.hide-btn:hover { background: #e06200; }
+
+        /* File list preview */
+        #file-list-container {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 20px;
+            text-align: left;
+            background-color: #f9f9f9;
+        }
+        .file-item {
+            padding: 6px 10px;
+            font-size: 14px;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -83,7 +104,8 @@
                 </div>
             </div>
             
-            <input type="file" name="photos" accept="image/*,video/*" multiple required>
+            <input type="file" name="photos" id="photo-input" accept="image/*,video/*" multiple required>
+            <div id="file-list-container"></div>
             <p style="color: #666; font-size: 12px; margin-top: 8px;">지원 확장자: jpg, png, gif, heic, mp4, webm, ogg, mov</p>
             <button type="submit" class="upload-btn">전송하기 🚀</button>
         </form>
@@ -131,6 +153,31 @@
         const customFolderContainer = document.getElementById('customFolderContainer');
         const restartBtn = document.getElementById('restart-mm-btn');
         const restartStatus = document.getElementById('restart-status');
+        const photoInput = document.getElementById('photo-input');
+        const fileListContainer = document.getElementById('file-list-container');
+
+        if (photoInput && fileListContainer) {
+            photoInput.addEventListener('change', function() {
+                // Clear previous list
+                fileListContainer.innerHTML = '';
+
+                if (this.files && this.files.length > 0) {
+                    // Show container only when files are selected
+                    fileListContainer.style.display = 'block';
+                    
+                    for (const file of this.files) {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        fileItem.textContent = `📄 ${file.name}`;
+                        fileListContainer.appendChild(fileItem);
+                    }
+                } else {
+                    fileListContainer.style.display = 'none';
+                }
+            });
+            // Initially hide the container
+            fileListContainer.style.display = 'none';
+        }
 
         if(restartBtn) {
             restartBtn.addEventListener('click', () => {

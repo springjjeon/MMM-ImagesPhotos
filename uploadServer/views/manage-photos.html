@@ -329,6 +329,25 @@
         .upload-btn:hover {
             background: #218838;
         }
+        #file-list-container {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 15px;
+            text-align: left;
+            background-color: #f9f9f9;
+        }
+        .file-item {
+            padding: 6px 10px;
+            font-size: 14px;
+            color: #333;
+            border-bottom: 1px solid #eee;
+        }
+        .file-item:last-child {
+            border-bottom: none;
+        }
         .file-list {
             margin-top: 15px;
             font-size: 14px;
@@ -481,7 +500,7 @@
                     <label for="photos" class="file-label">파일 선택...</label>
                     <button type="submit" class="upload-btn">업로드</button>
                 </div>
-                 <div id="file-list" class="file-list"></div>
+                 <div id="file-list-container"></div>
             </form>
         </div>
 
@@ -545,20 +564,25 @@
 
         // File upload list display
         const fileInput = document.getElementById('photos');
-        const fileList = document.getElementById('file-list');
-        if (fileInput) {
-            fileInput.addEventListener('change', (event) => {
-                fileList.innerHTML = '';
-                if (event.target.files.length > 0) {
-                    const files = Array.from(event.target.files);
-                    const fileNames = files.map(f => f.name).join(', ');
-                    if (files.length > 3) {
-                         fileList.textContent = `선택된 파일: ${files.length}개`;
-                    } else {
-                         fileList.textContent = `선택된 파일: ${fileNames}`;
+        const fileListContainer = document.getElementById('file-list-container');
+        if (fileInput && fileListContainer) {
+            fileInput.addEventListener('change', function() {
+                fileListContainer.innerHTML = ''; // Clear previous list
+
+                if (this.files && this.files.length > 0) {
+                    fileListContainer.style.display = 'block';
+                    for (const file of this.files) {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        fileItem.textContent = `📄 ${file.name}`;
+                        fileListContainer.appendChild(fileItem);
                     }
+                } else {
+                    fileListContainer.style.display = 'none';
                 }
             });
+            // Initially hide container
+            fileListContainer.style.display = 'none';
         }
     </script>
 </body>
