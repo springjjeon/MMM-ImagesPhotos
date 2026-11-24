@@ -166,7 +166,7 @@ function computeSeasonalMemory(year, month, day) {
 }
 
 function loadDisplayState() {
-	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "" };
+	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "", updateIntervalMs: 9000 };
 	try {
 		if (fs.existsSync(DISPLAY_STATE_FILE)) {
 			const parsed = JSON.parse(fs.readFileSync(DISPLAY_STATE_FILE, "utf8"));
@@ -174,7 +174,8 @@ function loadDisplayState() {
 				return {
 					galleryMode: Boolean(parsed.galleryMode),
 					filterMode: ["all", "favorites", "faces", "videos", "folder"].includes(parsed.filterMode) ? parsed.filterMode : "all",
-					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : ""
+					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : "",
+					updateIntervalMs: typeof parsed.updateIntervalMs === "number" && parsed.updateIntervalMs >= 3000 ? Math.min(120000, Math.round(parsed.updateIntervalMs)) : 9000
 				};
 			}
 		}
@@ -230,7 +231,7 @@ module.exports = NodeHelper.create({
 	dimCache: {},
 	favorites: new Set(),
 	brightness: 100,
-	displayState: { galleryMode: false, filterMode: "all", filterFolder: "" },
+	displayState: { galleryMode: false, filterMode: "all", filterFolder: "", updateIntervalMs: 9000 },
 	faceCacheSaveTimer: null,
 	geocodeCacheSaveTimer: null,
 	dateCacheSaveTimer: null,
@@ -571,6 +572,9 @@ module.exports = NodeHelper.create({
 			}
 			if (typeof body.filterFolder === "string") {
 				next.filterFolder = body.filterFolder;
+			}
+			if (typeof body.updateIntervalMs === "number" && !Number.isNaN(body.updateIntervalMs)) {
+				next.updateIntervalMs = Math.max(3000, Math.min(120000, Math.round(body.updateIntervalMs)));
 			}
 			this.displayState = next;
 			saveJsonCacheAtomic(DISPLAY_STATE_FILE, next);

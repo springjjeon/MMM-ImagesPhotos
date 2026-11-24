@@ -134,3 +134,4 @@ MagicMirror 프로세스(`node_helper.js`)가 로컬 전용 제어 API를 제공
 - **리모컨 재생 필터 (`filterMode`)**: `all` / `favorites` / `faces` / `videos` / `folder` 실시간 즉시 전환 (결과 0건 시 전체로 안전 폴백)
 - **이번 주(±7일)·같은 계절 추억 가중치**: ±7일 이맘때·같은 계절 사진 **5배 가중치**(`seasonalWeight: 5`, 인접 중복 방지 적용) + `🌸 N년 전 이맘때` 배지
 - **소프트웨어 디밍 오버레이**: BenQ EW2775ZH DDC VCP `0x10` 잠금 우회를 위해 `#mmip-dim-overlay`(`15%~100%`, `.cache/brightness.json`) 사용, `~/autoBrightness.sh` 크론(`07:30 100%`, `21:00 40%`) 연동
+- **슬라이드 전환 속도 실시간 조절 (`updateIntervalMs`)**: `.cache/display-state.json` 영구 저장, 리모컨 프리셋(`5초`/`9초`/`20초`/`30초`)으로 재시작 없이 즉시 변경

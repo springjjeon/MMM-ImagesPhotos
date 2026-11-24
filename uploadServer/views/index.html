@@ -108,6 +108,17 @@
             <select id="filter-folder-select" class="filter-folder-select" onchange="setFilterFolder(this.value)"></select>
         </div>
 
+        <!-- 슬라이드 전환 속도 -->
+        <div class="filter-box">
+            <div style="font-size: 13px; font-weight: 600; color: #333;">⏱️ 사진 전환 속도</div>
+            <div class="filter-pills" id="speed-pills">
+                <button type="button" class="filter-pill" data-ms="5000" onclick="setSlideSpeed(5000)">⚡ 빠르게 (5초)</button>
+                <button type="button" class="filter-pill" data-ms="9000" onclick="setSlideSpeed(9000)">⏱️ 보통 (9초)</button>
+                <button type="button" class="filter-pill" data-ms="20000" onclick="setSlideSpeed(20000)">☕ 여유롭게 (20초)</button>
+                <button type="button" class="filter-pill" data-ms="30000" onclick="setSlideSpeed(30000)">🖼️ 천천히 (30초)</button>
+            </div>
+        </div>
+
         <!-- 화면 밝기 제어 -->
         <div class="brightness-box">
             <div class="brightness-header">
@@ -176,7 +187,7 @@
     {{folderListHtml}}
 
     <script>
-        let currentDisplayState = { galleryMode: false, filterMode: 'all', filterFolder: '' };
+        let currentDisplayState = { galleryMode: false, filterMode: 'all', filterFolder: '', updateIntervalMs: 9000 };
         let knownVisibleFolders = [];
 
         function renderDisplayStateUi() {
@@ -187,6 +198,9 @@
             }
             document.querySelectorAll('#filter-pills .filter-pill').forEach((btn) => {
                 btn.classList.toggle('active', btn.dataset.mode === currentDisplayState.filterMode);
+            });
+            document.querySelectorAll('#speed-pills .filter-pill').forEach((btn) => {
+                btn.classList.toggle('active', Number(btn.dataset.ms) === Number(currentDisplayState.updateIntervalMs || 9000));
             });
             const sel = document.getElementById('filter-folder-select');
             if (sel) {
@@ -214,7 +228,8 @@
                 currentDisplayState = {
                     galleryMode: Boolean(data.galleryMode),
                     filterMode: data.filterMode || 'all',
-                    filterFolder: data.filterFolder || ''
+                    filterFolder: data.filterFolder || '',
+                    updateIntervalMs: Number(data.updateIntervalMs || 9000)
                 };
                 renderDisplayStateUi();
                 fb.textContent = successMsg;
@@ -241,6 +256,10 @@
 
         function setFilterFolder(folder) {
             updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터 변경: ${folder}`);
+        }
+
+        function setSlideSpeed(ms) {
+            updateDisplayState({ updateIntervalMs: ms }, `⏱️ 사진 전환 속도를 ${Math.round(ms / 1000)}초로 변경했습니다.`);
         }
 
         const brightnessSlider = document.getElementById('brightness-slider');

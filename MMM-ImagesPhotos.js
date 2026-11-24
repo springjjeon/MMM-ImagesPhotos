@@ -299,6 +299,13 @@ Module.register(ourModuleName, {
     if (typeof state.filterFolder === "string") {
       this.filterFolder = state.filterFolder;
     }
+    if (typeof state.updateIntervalMs === "number" && state.updateIntervalMs >= 3000) {
+      const prevInterval = this.config.updateInterval;
+      this.config.updateInterval = state.updateIntervalMs;
+      if (prevInterval !== state.updateIntervalMs && this.loaded && !this.paused && this.currentPhoto) {
+        this.waitForNextPhotoAndUpdate(state.updateIntervalMs);
+      }
+    }
     if (prevMode !== this.filterMode || prevFolder !== this.filterFolder) {
       this.photoDeck = [];
       this.nextPhoto = null;

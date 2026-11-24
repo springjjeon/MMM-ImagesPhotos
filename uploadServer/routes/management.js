@@ -45,7 +45,7 @@ const BRIGHTNESS_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "bright
 const DISPLAY_STATE_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "display-state.json");
 
 function readDisplayStateSync() {
-	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "" };
+	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "", updateIntervalMs: 9000 };
 	try {
 		if (fs.existsSync(DISPLAY_STATE_CACHE_FILE)) {
 			const parsed = JSON.parse(fs.readFileSync(DISPLAY_STATE_CACHE_FILE, "utf8"));
@@ -53,7 +53,8 @@ function readDisplayStateSync() {
 				return {
 					galleryMode: Boolean(parsed.galleryMode),
 					filterMode: ["all", "favorites", "faces", "videos", "folder"].includes(parsed.filterMode) ? parsed.filterMode : "all",
-					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : ""
+					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : "",
+					updateIntervalMs: typeof parsed.updateIntervalMs === "number" && parsed.updateIntervalMs >= 3000 ? Math.min(120000, Math.round(parsed.updateIntervalMs)) : 9000
 				};
 			}
 		}
@@ -329,6 +330,9 @@ function createManagementRouter(uploadDir) {
 			next.filterMode = body.filterMode;
 		}
 		if (typeof body.filterFolder === "string") next.filterFolder = body.filterFolder;
+		if (typeof body.updateIntervalMs === "number" && !Number.isNaN(body.updateIntervalMs)) {
+			next.updateIntervalMs = Math.max(3000, Math.min(120000, Math.round(body.updateIntervalMs)));
+		}
 		try {
 			saveDisplayStateSync(next);
 		} catch (err) {
