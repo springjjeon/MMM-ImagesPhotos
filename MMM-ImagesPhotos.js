@@ -25,7 +25,7 @@ Module.register(ourModuleName, {
     debugToConsole: true,
     enableVideoPlayback: true,
     videoPlaybackMultiplier: 1.2,
-    transitionMode: "crossfade", // "crossfade" | "black"
+    transitionMode: "black", // "black" | "crossfade"
     enablePortraitCollage: true,
     imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
@@ -45,9 +45,9 @@ Module.register(ourModuleName, {
 
   transitionDefaults: {
     blackDuration: 1000,
-    fadeDuration: 2200,
+    fadeDuration: 1500,
     displayDuration: 5000,
-    easing: "cubic-bezier(0.4, 0, 0.2, 1)"
+    easing: "ease-in-out"
   },
 
   wrapper: null,
@@ -398,7 +398,7 @@ Module.register(ourModuleName, {
   },
 
   triggerDomUpdate() {
-    const speed = this.fullscreen && this.config.transitionMode === "crossfade" ? 0 : this.config.animationSpeed;
+    const speed = this.fullscreen ? 0 : this.config.animationSpeed;
     this.updateDom(speed);
   },
 
@@ -626,12 +626,14 @@ Module.register(ourModuleName, {
       return;
     }
 
-    // Classic black -> fade-in -> display -> fade-out mode
+    // Classic black -> smooth fade-in -> display -> smooth fade-out mode
     const nextUpdateDelay = blackDuration + fadeDuration + displayDuration + fadeDuration;
     self.waitForNextPhotoAndUpdate(nextUpdateDelay);
 
     if (fgContainer) {
       fgContainer.style.backgroundColor = avg || "black";
+      fgContainer.style.opacity = 0;
+      void fgContainer.offsetWidth;
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
 
       self.scheduleFadeTimer(() => {
