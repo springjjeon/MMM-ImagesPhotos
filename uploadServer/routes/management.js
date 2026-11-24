@@ -215,9 +215,10 @@ function createManagementRouter(uploadDir) {
 							const ext = path.extname(file).toLowerCase();
 							const isVideo = [".mp4", ".webm", ".ogg", ".mov"].includes(ext);
 
+							const safeRelAttr = fileInfo.relPath.replace(/'/g, "\\'");
 							const mediaElement = isVideo
-								? `<video src="${fullUrl}#t=0.5" preload="metadata" muted playsinline style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}')"></video>`
-								: `<img src="${thumbUrl}" alt="${displayName}" loading="lazy" decoding="async" style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}')">`;
+								? `<video src="${fullUrl}#t=0.5" preload="metadata" muted playsinline style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}', '${safeRelAttr}')"></video>`
+								: `<img src="${thumbUrl}" alt="${displayName}" loading="lazy" decoding="async" style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}', '${safeRelAttr}')">`;
 
 							const favBtnStyle = fileInfo.isFavorite
 								? "background:#f59f00; color:#111; font-weight:700;"
@@ -236,6 +237,7 @@ function createManagementRouter(uploadDir) {
 										<div style="font-size:11px;color:#888;margin-top:2px;">🗓️ ${fileInfo.dateLabel || "-"}</div>
 									</div>
 									<div class="photo-actions">
+										<button type="button" class="action-btn" style="background:#007bff;color:#fff;" onclick="castToFrame('${safeRelAttr}', false)" title="지금 액자에 띄우기">📺</button>
 										<form action="/manage/toggle-favorite" method="post" style="margin:0;">
 											<input type="hidden" name="folderName" value="${folderName}">
 											<input type="hidden" name="relPath" value="${fileInfo.relPath}">
@@ -340,6 +342,19 @@ function createManagementRouter(uploadDir) {
 		}
 		callMagicMirrorApi("POST", "/display-state", next, () => {
 			res.json({ ok: true, ...next });
+		});
+	});
+
+	// --- Cast Specific Photo to Frame Immediately ---
+	router.post("/api/show-photo", (req, res) => {
+		const relPath = req.body && req.body.relPath;
+		const pause = Boolean(req.body && req.body.pause);
+		if (!relPath || typeof relPath !== "string") {
+			return res.status(400).json({ ok: false, error: "사진 경로가 필요합니다." });
+		}
+		callMagicMirrorApi("POST", "/show-photo", { path: relPath, pause }, (err, data) => {
+			if (err) return res.status(500).json({ ok: false, error: err.message });
+			return res.json({ ok: true, ...data });
 		});
 	});
 

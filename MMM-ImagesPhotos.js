@@ -73,6 +73,7 @@ Module.register(ourModuleName, {
   photoDeck: [],
   photoHistory: [],
   goingBack: false,
+  pendingShowNow: null,
   currentPhoto: null,
   nextPhoto: null,
   lastPhotoIndex: -1,
@@ -143,6 +144,21 @@ Module.register(ourModuleName, {
       if (this.config.debugToConsole) {
         Log.log(`[MMM-ImagesPhotos] METADATA_RESPONSE received for: ${payload.photo.path}`);
       }
+      if (this.pendingShowNow && this.pendingShowNow.path === payload.photo.path) {
+        const shouldPause = this.pendingShowNow.pause;
+        this.pendingShowNow = null;
+        this.nextPhoto = { ...payload.photo, forceSingle: true };
+        this.clearFadeTimers();
+        if (this.timer) {
+          clearTimeout(this.timer);
+          this.timer = null;
+        }
+        this.triggerDomUpdate();
+        if (shouldPause) {
+          this.setPaused(true);
+        }
+        return;
+      }
       this.nextPhoto = payload.photo;
       if (!this.currentPhoto) {
         this.triggerDomUpdate();
@@ -164,6 +180,10 @@ Module.register(ourModuleName, {
     }
     if (notification === "DISPLAY_STATE_UPDATED" && payload.id === this.identifier) {
       this.applyDisplayState(payload);
+    }
+    if (notification === "SHOW_PHOTO_NOW" && payload.id === this.identifier && payload.photo) {
+      this.pendingShowNow = { path: payload.photo.path, pause: Boolean(payload.pause) };
+      this.sendSocketNotification("GET_METADATA", { id: this.identifier, photo: payload.photo });
     }
     if (notification === "FAVORITE_UPDATED" && payload.id === this.identifier) {
       if (this.currentPhoto && this.currentPhoto.path === payload.path) {
@@ -511,7 +531,7 @@ Module.register(ourModuleName, {
 
   pickCollageCompanion(primaryPhoto) {
     if (!this.config.enablePortraitCollage || !this.fullscreen) return null;
-    if (!primaryPhoto || this.isVideo(primaryPhoto)) return null;
+    if (!primaryPhoto || primaryPhoto.forceSingle || this.isVideo(primaryPhoto)) return null;
     const prob = typeof this.config.collageProbability === "number" ? this.config.collageProbability : 0.5;
     if (Math.random() >= prob) return null;
 

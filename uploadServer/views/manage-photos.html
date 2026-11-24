@@ -512,10 +512,51 @@
     <div id="fullscreen-overlay" class="fullscreen-overlay" style="display: none;" onclick="closeFullscreen(event)">
         <span class="close-btn-fullscreen" onclick="closeFullscreen()">&times;</span>
         <div id="fullscreen-content" class="fullscreen-content"></div>
+        <div id="fullscreen-cast-bar" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:10002;" onclick="event.stopPropagation()">
+            <button type="button" onclick="castCurrentFullscreen(false)" style="padding:11px 18px;border:none;border-radius:999px;background:#007bff;color:#fff;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);">📺 액자에 띄우기</button>
+            <button type="button" onclick="castCurrentFullscreen(true)" style="padding:11px 18px;border:none;border-radius:999px;background:#f59f00;color:#111;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);">📌 띄우고 고정</button>
+        </div>
     </div>
+    <div id="cast-toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(20,20,25,0.9);color:#fff;padding:12px 20px;border-radius:999px;font-size:14px;font-weight:600;display:none;z-index:20000;box-shadow:0 4px 16px rgba(0,0,0,0.35);"></div>
 
     <script>
-        function openFullscreen(url, ext) {
+        let currentFullscreenRelPath = null;
+        let toastTimer = null;
+
+        function showCastToast(msg) {
+            const el = document.getElementById('cast-toast');
+            if (!el) return;
+            el.textContent = msg;
+            el.style.display = 'block';
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2600);
+        }
+
+        async function castToFrame(relPath, pause) {
+            if (!relPath) return;
+            showCastToast('⏳ 액자에 전송 중...');
+            try {
+                const res = await fetch('/manage/api/show-photo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relPath, pause: Boolean(pause) })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '전송 실패');
+                showCastToast(pause ? '📌 액자에 띄우고 일시정지 고정했습니다!' : '📺 액자에 바로 띄웠습니다!');
+            } catch (err) {
+                showCastToast(`❌ 실패: ${err.message}`);
+            }
+        }
+
+        function castCurrentFullscreen(pause) {
+            if (currentFullscreenRelPath) {
+                castToFrame(currentFullscreenRelPath, pause);
+            }
+        }
+
+        function openFullscreen(url, ext, relPath) {
+            currentFullscreenRelPath = relPath || null;
             const overlay = document.getElementById('fullscreen-overlay');
             const content = document.getElementById('fullscreen-content');
             content.innerHTML = ''; // Clear previous content

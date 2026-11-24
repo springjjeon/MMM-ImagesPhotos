@@ -585,6 +585,48 @@ module.exports = NodeHelper.create({
 			res.json({ ok: true, ...next });
 		});
 
+		this.expressApp.post("/MMM-ImagesPhotos/api/show-photo", (req, res) => {
+			const instances = Array.from(this.activeInstances);
+			const primaryId = instances[0];
+			const relPath = req.body && typeof req.body.path === "string" ? req.body.path.replace(/^\/+/, "") : "";
+			const shouldPause = Boolean(req.body && req.body.pause);
+			if (!primaryId || !relPath) {
+				return res.status(400).json({ ok: false, error: "Invalid photo path or no active MagicMirror instance" });
+			}
+
+			const baseDir = this.path_images[primaryId];
+			const fullPath = path.resolve(baseDir, relPath);
+			if (!fullPath.startsWith(baseDir + path.sep) || !fs.existsSync(fullPath)) {
+				return res.status(404).json({ ok: false, error: "Photo file not found" });
+			}
+
+			const normalizedRel = path.relative(baseDir, fullPath).split(path.sep).join("/");
+			const photoEntry = {
+				url: `/MMM-ImagesPhotos/photo/${primaryId}/${normalizedRel}`,
+				path: normalizedRel,
+				isFavorite: this.favorites.has(normalizedRel),
+				forceSingle: true
+			};
+			const dc = this.dateCache[normalizedRel];
+			if (dc && dc.year && dc.month && dc.day) {
+				photoEntry.dateStr = formatDateStr(dc.year, dc.month, dc.day);
+				const sm = computeSeasonalMemory(dc.year, dc.month, dc.day);
+				if (sm.memoryYearsAgo >= 1) photoEntry.memoryYearsAgo = sm.memoryYearsAgo;
+				if (sm.nearMemoryYearsAgo >= 1) photoEntry.nearMemoryYearsAgo = sm.nearMemoryYearsAgo;
+				photoEntry.isSameSeason = sm.isSameSeason;
+			}
+
+			instances.forEach((id) => {
+				this.sendSocketNotification("SHOW_PHOTO_NOW", {
+					id,
+					photo: { ...photoEntry, url: `/MMM-ImagesPhotos/photo/${id}/${normalizedRel}` },
+					pause: shouldPause
+				});
+			});
+			console.log(`[MMM-ImagesPhotos] Casting photo now: ${normalizedRel} (pause=${shouldPause})`);
+			res.json({ ok: true, path: normalizedRel, paused: shouldPause });
+		});
+
 		this.expressApp.post("/MMM-ImagesPhotos/api/hide-current", (req, res) => {
 			const instances = Array.from(this.activeInstances);
 			const primaryId = instances[0];
