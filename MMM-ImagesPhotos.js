@@ -1,4 +1,4 @@
-/* global Log MM Module */
+/* global Log MM Module config */
 
 /*
  * MagicMirror²
@@ -21,12 +21,14 @@ Module.register(ourModuleName, {
     path: "",
     fill: false,
     blur: 8,
-    sequential: false
-    ,debugToConsole: true
-    ,enableVideoPlayback: true // 동영상 재생 여부 설정 (true: 재생, false: 이미지만)
-    ,videoPlaybackMultiplier: 1.2 // 동영상 재생 시간을 사진보다 몇 배 길게 할지 (1.5 = 1.5배, 2 = 2배 등)
-    ,imageEffects: [
-      "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown", 
+    sequential: false,
+    debugToConsole: true,
+    enableVideoPlayback: true,
+    videoPlaybackMultiplier: 1.2,
+    transitionMode: "crossfade", // "crossfade" | "black"
+    enablePortraitCollage: true,
+    imageEffects: [
+      "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
       "ip-pan-diag-tl-br", "ip-pan-diag-tr-bl", "ip-pan-diag-bl-tr", "ip-pan-diag-br-tl",
       "ip-still",
@@ -36,11 +38,11 @@ Module.register(ourModuleName, {
     language: config.language,
     faceDetection: true,
     showUploadQrCode: true,
-    uploadUrl: "", // 비워두면 자동 감지된 IP 사용
-    uploadPort: 8999, // 자동 감지된 IP와 조합될 기본 포트 번호
-    qrCodePosition: "bottom-left" // "bottom-left", "bottom-right", "top-left", "top-right"
+    uploadUrl: "",
+    uploadPort: 8999,
+    qrCodePosition: "bottom-left"
   },
-  // transition defaults (ms)
+
   transitionDefaults: {
     blackDuration: 1000,
     fadeDuration: 1000,
@@ -49,41 +51,58 @@ Module.register(ourModuleName, {
   },
 
   wrapper: null,
+  bk: null,
+  fg: null,
+  fgLayers: null,
+  activeLayerIdx: 0,
+  overlayRoot: null,
+  qrRendered: false,
+  pauseBadgeEl: null,
   suspended: false,
+  paused: false,
   timer: null,
   fadeTimers: [],
   fullscreen: false,
   photos: [],
+  photoDeck: [],
   currentPhoto: null,
   nextPhoto: null,
   lastPhotoIndex: -1,
+  lastDrawnPath: null,
+  serverIp: null,
 
-  requiresVersion: "2.24.0", // Required version of MagicMirror
+  requiresVersion: "2.24.0",
 
   start() {
     this.loaded = false;
+    this.paused = false;
+    this.fadeTimers = [];
+    this.photoDeck = [];
     this.config.id = this.identifier;
     this.sendSocketNotification("CONFIG", this.config);
-    // Explicit startup log for terminal visibility
     try { Log.info(`${this.name}: start()`); } catch (e) {}
-    try { if (this.config && this.config.debugToConsole) console.log(`${this.name}: start()`); } catch (e) {}
   },
+
   getStyles() {
     return ["MMM-ImagesPhotos.css"];
   },
 
-  /*
-   * Requests new data from api url helper
-   */
-  async getPhotos() {
+  getScripts() {
+    return [];
+  },
+
+  async getPhotos(isRefresh = false) {
     const urlApHelper = `/MMM-ImagesPhotos/photos/${this.identifier}`;
     try {
       const response = await fetch(urlApHelper);
       if (response.ok) {
         this.photos = await response.json();
         this.loaded = true;
+        this.photoDeck = [];
         if (this.photos.length > 0) {
-          this.prepareNextPhoto(); // Start the process by preparing the first photo
+          if (!isRefresh || !this.nextPhoto) {
+            this.prepareNextPhoto();
+          }
         }
       } else {
         Log.error(this.name, "Could not load photos.");
@@ -95,8 +114,7 @@ Module.register(ourModuleName, {
     }
   },
 
-  notificationReceived(notification, payload, sender) {
-    // Hook to turn off messages about notiofications, clock once a second
+  notificationReceived(notification) {
     if (notification === "ALL_MODULES_STARTED") {
       const ourInstances = MM.getModules().withClass(ourModuleName);
       ourInstances.forEach((m) => {
@@ -106,10 +124,10 @@ Module.register(ourModuleName, {
       });
     }
   },
-  
+
   socketNotificationReceived(notification, payload) {
     if (notification === "READY" && payload === this.identifier) {
-      this.getPhotos();
+      this.getPhotos(false);
     }
     if (notification === "METADATA_RESPONSE" && payload.id === this.identifier) {
       if (this.config.debugToConsole) {
@@ -117,28 +135,93 @@ Module.register(ourModuleName, {
       }
       this.nextPhoto = payload.photo;
       if (!this.currentPhoto) {
-        // If this is the first photo, display it immediately
         this.updateDom(this.config.animationSpeed);
       }
     }
     if (notification === "SERVER_IP" && payload.id === this.identifier) {
       this.serverIp = payload.ip;
+      this.ensureQrCodeOverlay();
     }
-    // 새 파일이 업로드되었을 때 자동으로 사진 목록 새로고침
     if (notification === "PHOTOS_UPDATED" && payload.id === this.identifier) {
-      try { Log.log(`[MMM-ImagesPhotos] Photos updated, refreshing...`); } catch (e) {}
-      try { if (this.config && this.config.debugToConsole) console.log(`[MMM-ImagesPhotos] Photos updated, refreshing...`); } catch (e) {}
-      this.getPhotos();
+      Log.info(`[MMM-ImagesPhotos] Live photo list refresh triggered.`);
+      this.getPhotos(true);
+    }
+    if (notification === "REMOTE_CONTROL" && payload.id === this.identifier) {
+      this.handleRemoteControl(payload.action);
     }
   },
 
-  prepareNextPhoto() {
-    if (this.photos.length === 0) {
-      return;
+  handleRemoteControl(action) {
+    Log.info(`[MMM-ImagesPhotos] Remote control: ${action}`);
+    if (action === "pause") {
+      this.setPaused(true);
+    } else if (action === "resume") {
+      this.setPaused(false);
+    } else if (action === "toggle-pause") {
+      this.setPaused(!this.paused);
+    } else if (action === "next") {
+      this.advanceNow();
     }
+  },
+
+  setPaused(shouldPause) {
+    this.paused = Boolean(shouldPause);
+    this.updatePauseBadge();
+    if (this.paused) {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+    } else {
+      this.waitForNextPhotoAndUpdate(1200);
+    }
+    this.reportCurrentPhoto();
+  },
+
+  advanceNow() {
+    this.clearFadeTimers();
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (!this.nextPhoto) {
+      this.prepareNextPhoto();
+    }
+    this.waitForNextPhotoAndUpdate(0);
+  },
+
+  updatePauseBadge() {
+    if (!this.overlayRoot) return;
+    if (this.paused) {
+      if (!this.pauseBadgeEl) {
+        const badge = document.createElement("div");
+        badge.className = "mmip-pause-badge";
+        badge.textContent = "⏸ 일시정지";
+        this.overlayRoot.appendChild(badge);
+        this.pauseBadgeEl = badge;
+      }
+    } else if (this.pauseBadgeEl) {
+      this.pauseBadgeEl.remove();
+      this.pauseBadgeEl = null;
+    }
+  },
+
+  reportCurrentPhoto() {
+    if (!this.currentPhoto) return;
+    this.sendSocketNotification("CURRENT_PHOTO", {
+      id: this.identifier,
+      path: this.currentPhoto.path,
+      url: this.currentPhoto.url,
+      companionPath: this.currentPhoto.companion ? this.currentPhoto.companion.path : null,
+      effect: this.currentPhoto.effect || null,
+      paused: this.paused
+    });
+  },
+
+  prepareNextPhoto() {
+    if (this.photos.length === 0) return;
     const nextPhoto = this.randomPhoto();
     if (!nextPhoto) {
-      // 필터링된 사진이 없는 경우 (예: enableVideoPlayback=false이면서 동영상만 있는 경우)
       if (this.config.debugToConsole) {
         Log.warn(`[MMM-ImagesPhotos] prepareNextPhoto: No photos available after filtering`);
       }
@@ -150,133 +233,131 @@ Module.register(ourModuleName, {
     this.sendSocketNotification("GET_METADATA", { id: this.identifier, photo: nextPhoto });
   },
 
-  /*
-   * Schedule next update.
-   *
-   * argument delay number - Milliseconds before next update.
-   *  If empty, this.config.updateInterval is used.
-   */
   scheduleUpdate(delay) {
     let nextLoad = this.config.getInterval;
     if (typeof delay !== "undefined" && delay >= 0) {
       nextLoad = delay;
     }
-
-    const self = this;
     setTimeout(() => {
-      self.getPhotos();
+      this.getPhotos(false);
     }, nextLoad);
   },
 
-  /*
-   * Generate a random index for a list of photos.
-   *
-   * argument photos Array<String> - Array with photos.
-   *
-   * return Number - Random index.
-   */
-  randomIndex(photos) {
-    if (photos.length === 1) {
-      return 0;
-    }
-
-    const generate = () => Math.floor(Math.random() * photos.length);
-
-    let photoIndex =
-      this.lastPhotoIndex === photos.length - 1 ? 0 : this.lastPhotoIndex + 1;
-    if (!this.config.sequential) {
-      photoIndex = generate();
-      // Ensure the next random photo is not the same as the current one
-      while (photoIndex === this.lastPhotoIndex) {
-        photoIndex = generate();
-      }
-    }
-    this.lastPhotoIndex = photoIndex;
-
-    return photoIndex;
-  },
-
-  /*
-   * Retrieve filtered photos based on enableVideoPlayback setting.
-   *
-   * return Array - Filtered photos array.
-   */
   getFilteredPhotos() {
     if (this.config.enableVideoPlayback) {
-      // 동영상 재생이 활성화되면 모든 파일 반환
       return this.photos;
-    } else {
-      // 동영상 재생이 비활성화되면 이미지 파일만 반환
-      const filtered = this.photos.filter(photo => !this.isVideo(photo));
-      if (filtered.length === 0 && this.config.debugToConsole) {
-        Log.warn(`[MMM-ImagesPhotos] No image files found. All files appear to be videos.`);
-      }
-      return filtered;
     }
+    const filtered = this.photos.filter((photo) => !this.isVideo(photo));
+    if (filtered.length === 0 && this.config.debugToConsole) {
+      Log.warn(`[MMM-ImagesPhotos] No image files found. All files appear to be videos.`);
+    }
+    return filtered;
   },
 
-  /*
-   * Retrieve a random photo from filtered list.
-   *
-   * return photo Object - A random photo (filtered based on enableVideoPlayback setting), or null if no photos available.
-   */
+  buildPhotoDeck(filteredPhotos) {
+    const deck = filteredPhotos.slice();
+    // Fisher-Yates shuffle for non-repeating random cycle
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = deck[i];
+      deck[i] = deck[j];
+      deck[j] = tmp;
+    }
+
+    // Prioritize up to 2 "On This Day" memory photos near the front of the deck
+    const memories = deck.filter((p) => p.memoryYearsAgo && p.memoryYearsAgo >= 1);
+    if (memories.length > 0 && deck.length > 3) {
+      const featured = memories.slice(0, 2);
+      featured.forEach((m, idx) => {
+        const pos = deck.indexOf(m);
+        if (pos > -1) {
+          deck.splice(pos, 1);
+          const insertAt = Math.min(idx * 2, deck.length);
+          deck.splice(insertAt, 0, m);
+        }
+      });
+    }
+
+    // Avoid immediate back-to-back repeat across deck boundaries
+    if (deck.length > 1 && this.lastDrawnPath && deck[0].path === this.lastDrawnPath) {
+      const first = deck.shift();
+      deck.push(first);
+    }
+
+    return deck;
+  },
+
   randomPhoto() {
     const filteredPhotos = this.getFilteredPhotos();
-    
-    if (filteredPhotos.length === 0) {
-      if (this.config.debugToConsole) {
-        Log.warn(`[MMM-ImagesPhotos] No photos available after filtering. enableVideoPlayback=${this.config.enableVideoPlayback}`);
-      }
-      return null;
-    }
-
-    // Sequential 모드에서 인덱스 관리
-    const generate = () => Math.floor(Math.random() * filteredPhotos.length);
-    let photoIndex;
+    if (filteredPhotos.length === 0) return null;
 
     if (this.config.sequential) {
-      // Sequential: 순서대로 (마지막에 도달하면 처음부터 시작)
-      photoIndex = (this.lastPhotoIndex + 1) % filteredPhotos.length;
-    } else {
-      // Random: 임의로 선택
-      photoIndex = generate();
-      // 현재 사진과 같지않은 사진 선택
-      while (filteredPhotos.length > 1 && photoIndex === this.lastPhotoIndex) {
-        photoIndex = generate();
-      }
+      const photoIndex = (this.lastPhotoIndex + 1) % filteredPhotos.length;
+      this.lastPhotoIndex = photoIndex;
+      const chosen = filteredPhotos[photoIndex];
+      this.lastDrawnPath = chosen.path;
+      return chosen;
     }
 
-    this.lastPhotoIndex = photoIndex;
-    return filteredPhotos[photoIndex];
+    if (!this.photoDeck || this.photoDeck.length === 0) {
+      this.photoDeck = this.buildPhotoDeck(filteredPhotos);
+    }
+
+    const chosen = this.photoDeck.shift();
+    this.lastDrawnPath = chosen.path;
+    return chosen;
+  },
+
+  pickPortraitCompanion(primaryPhoto) {
+    if (!this.config.enablePortraitCollage || !this.fullscreen) return null;
+    if (window.innerWidth <= window.innerHeight) return null;
+    if (!primaryPhoto || this.isVideo(primaryPhoto)) return null;
+
+    const isPrimaryPortrait = this.isPhotoPortrait(primaryPhoto);
+    if (!isPrimaryPortrait) return null;
+
+    // Look in the upcoming deck for another known portrait image
+    if (this.photoDeck && this.photoDeck.length > 0) {
+      const idx = this.photoDeck.findIndex(
+        (p) => p.path !== primaryPhoto.path && !this.isVideo(p) && p.isPortrait === true
+      );
+      if (idx !== -1) {
+        return this.photoDeck.splice(idx, 1)[0];
+      }
+    }
+    return null;
+  },
+
+  isPhotoPortrait(photoImage) {
+    if (photoImage.face && photoImage.face.width && photoImage.face.height) {
+      return photoImage.face.height > photoImage.face.width;
+    }
+    if (photoImage.exif && photoImage.exif.tags) {
+      const t = photoImage.exif.tags;
+      const w = t.ImageWidth || t.ExifImageWidth;
+      const h = t.ImageHeight || t.ExifImageHeight;
+      if (w && h) {
+        const orientation = t.Orientation || 1;
+        const rotated = orientation >= 5 && orientation <= 8;
+        return rotated ? w > h : h > w;
+      }
+    }
+    return photoImage.isPortrait === true;
   },
 
   scaleImage(srcwidth, srcheight, targetwidth, targetheight, fLetterBox) {
     const result = { width: 0, height: 0, fScaleToTargetWidth: true };
-
-    if (
-      srcwidth <= 0 ||
-      srcheight <= 0 ||
-      targetwidth <= 0 ||
-      targetheight <= 0
-    ) {
+    if (srcwidth <= 0 || srcheight <= 0 || targetwidth <= 0 || targetheight <= 0) {
       return result;
     }
 
-    // Scale to the target width
     const scaleX1 = targetwidth;
     const scaleY1 = (srcheight * targetwidth) / srcwidth;
-
-    // Scale to the target height
     const scaleX2 = (srcwidth * targetheight) / srcheight;
     const scaleY2 = targetheight;
 
-    // Now figure out which one we should use
     let fScaleOnWidth = scaleX2 > targetwidth;
-    if (fScaleOnWidth) {
-      fScaleOnWidth = fLetterBox;
-    } else {
-      fScaleOnWidth = !fLetterBox;
-    }
+    fScaleOnWidth = fScaleOnWidth ? fLetterBox : !fLetterBox;
 
     if (fScaleOnWidth) {
       result.width = Math.floor(scaleX1);
@@ -289,13 +370,11 @@ Module.register(ourModuleName, {
     }
     result.targetleft = Math.floor((targetwidth - result.width) / 2);
     result.targettop = Math.floor((targetheight - result.height) / 2);
-
     return result;
   },
 
   computeAverageColor(imageEl) {
     try {
-      if (this.config.debugToConsole) Log.log(`${this.name}: computeAverageColor: src=${imageEl && imageEl.src}`);
       const sampleSize = 40;
       const canvas = document.createElement("canvas");
       canvas.width = sampleSize;
@@ -306,18 +385,14 @@ Module.register(ourModuleName, {
       let r = 0, g = 0, b = 0, count = 0;
       const stride = 4 * 3;
       for (let i = 0; i < data.length; i += stride) {
-        r += data[i]; g += data[i+1]; b += data[i+2]; count++;
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
       }
-      if (count === 0) {
-        if (this.config.debugToConsole) Log.warn(this.name, "computeAverageColor: no pixels sampled");
-        return null;
-      }
-      r = Math.round(r / count); g = Math.round(g / count); b = Math.round(b / count);
-      const rgb = `rgb(${r}, ${g}, ${b})`;
-      if (this.config.debugToConsole) Log.log(`${this.name}: computeAverageColor: result=${rgb}`);
-      return rgb;
+      if (count === 0) return null;
+      return `rgb(${Math.round(r / count)}, ${Math.round(g / count)}, ${Math.round(b / count)})`;
     } catch (e) {
-      Log.warn(this.name, "computeAverageColor failed", e);
       return null;
     }
   },
@@ -329,13 +404,10 @@ Module.register(ourModuleName, {
     let elapsed = 0;
 
     const attempt = () => {
-      if (self.suspended) {
-        return;
-      }
+      if (self.suspended || self.paused) return;
       if (self.nextPhoto) {
         self.updateDom(self.config.animationSpeed);
       } else if (elapsed >= maxWait) {
-        // Force update anyway to avoid stuck state
         self.updateDom(self.config.animationSpeed);
       } else {
         elapsed += checkInterval;
@@ -343,41 +415,45 @@ Module.register(ourModuleName, {
       }
     };
 
-    if (self.timer) {
-      clearTimeout(self.timer);
+    if (self.timer) clearTimeout(self.timer);
+    if (!self.paused) {
+      self.timer = setTimeout(attempt, delayMs);
     }
-    self.timer = setTimeout(attempt, delayMs);
   },
 
   createQrCodeNode() {
     if (!this.config.showUploadQrCode) return null;
-    
-    // 설정된 URL이 없으면, 서버에서 전달받은 IP와 설정된 Port로 동적 URL 생성
+
     let finalUrl = this.config.uploadUrl;
     if (!finalUrl && this.serverIp) {
-        finalUrl = `http://${this.serverIp}:${this.config.uploadPort}`;
+      finalUrl = `http://${this.serverIp}:${this.config.uploadPort}`;
     }
     if (!finalUrl) return null;
+
+    const qrBase = this.serverIp
+      ? `http://${this.serverIp}:${this.config.uploadPort}`
+      : `http://127.0.0.1:${this.config.uploadPort}`;
 
     const qrWrapper = document.createElement("div");
     qrWrapper.className = "mmip-qr-code";
     qrWrapper.style.position = "absolute";
     qrWrapper.style.zIndex = 100;
     qrWrapper.style.padding = "10px";
-    qrWrapper.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-    qrWrapper.style.borderRadius = "10px";
+    qrWrapper.style.backgroundColor = "rgba(0, 0, 0, 0.52)";
+    qrWrapper.style.borderRadius = "12px";
 
-    // 설정된 위치값에 따라 배치
     if (this.config.qrCodePosition.includes("bottom")) qrWrapper.style.bottom = "20px";
     if (this.config.qrCodePosition.includes("top")) qrWrapper.style.top = "20px";
     if (this.config.qrCodePosition.includes("left")) qrWrapper.style.left = "20px";
     if (this.config.qrCodePosition.includes("right")) qrWrapper.style.right = "20px";
 
     const qrImg = document.createElement("img");
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(finalUrl)}`;
+    qrImg.src = `${qrBase}/qr?data=${encodeURIComponent(finalUrl)}`;
     qrImg.style.width = "100px";
     qrImg.style.height = "100px";
     qrImg.style.display = "block";
+    qrImg.style.borderRadius = "6px";
+    qrImg.style.backgroundColor = "#fff";
 
     const text = document.createElement("div");
     text.innerHTML = "📸 사진 업로드";
@@ -389,131 +465,16 @@ Module.register(ourModuleName, {
 
     qrWrapper.appendChild(qrImg);
     qrWrapper.appendChild(text);
-
     return qrWrapper;
   },
 
-  handleVideoPlayback(video, photoImage) {
-    const self = this;
-    // 동영상 재생 시간 = 사진 표시 시간 × videoPlaybackMultiplier
-    const displayDuration = this.config.updateInterval * this.config.videoPlaybackMultiplier;
-    let videoLoadTimeout = null;
-    let isVideoFailed = false;
-
-    // 함수: 비디오 실패 처리 (중복 호출 방지)
-    const handleVideoFailure = (reason = "Unknown error") => {
-        if (isVideoFailed) return; // 이미 처리됨
-        isVideoFailed = true;
-
-        if (videoLoadTimeout) clearTimeout(videoLoadTimeout);
-        if (self.timer) clearTimeout(self.timer);
-
-        const errorMsg = `[MMM-ImagesPhotos] Video playback failed for ${photoImage.url}: ${reason}`;
-        if (self.config.debugToConsole) {
-            Log.warn(errorMsg);
-            console.warn(errorMsg);
-        } else {
-            Log.warn(errorMsg);
-        }
-
-        self.nextPhoto = null;
-        self.prepareNextPhoto();
-        self.waitForNextPhotoAndUpdate(self.config.retryDelay);
-    };
-
-    // 비디오 로드 타임아웃 설정 (10초)
-    videoLoadTimeout = setTimeout(() => {
-        if (!isVideoFailed && video.readyState < 2) { // 아직 충분한 데이터가 로드되지 않음
-            handleVideoFailure("Video load timeout - Unsupported format or network issue");
-        }
-    }, 10000);
-
-    video.onloadeddata = () => {
-        if (isVideoFailed) return;
-        
-        if (videoLoadTimeout) clearTimeout(videoLoadTimeout);
-        
-        const videoDuration = video.duration * 1000; // in ms
-
-        if (videoDuration < displayDuration) {
-            // Short video: loop and set a timeout
-            video.loop = true;
-            if (self.config.debugToConsole) {
-                Log.log(`[MMM-ImagesPhotos] Short video (${videoDuration}ms). Looping for ${displayDuration}ms.`);
-            }
-        } else if (videoDuration > displayDuration) {
-            // Long video: set random start time
-            video.loop = false;
-            const maxStartTime = video.duration - (displayDuration / 1000);
-            const startTime = Math.random() * maxStartTime;
-            video.currentTime = startTime;
-            if (self.config.debugToConsole) {
-                Log.log(`[MMM-ImagesPhotos] Long video (${videoDuration}ms). Starting at ${startTime.toFixed(2)}s for ${displayDuration}ms.`);
-            }
-        } else {
-            video.loop = false;
-        }
-
-        video.play().catch(err => {
-            handleVideoFailure(`Play error: ${err.message}`);
-        });
-
-        // Clear any existing timer
-        if (self.timer) clearTimeout(self.timer);
-        
-        const fadeDuration = self.transitionDefaults.fadeDuration;
-        // Schedule the fade-out and transition to the next photo
-        self.timer = setTimeout(() => {
-            const fg = video.parentElement;
-            if (fg) {
-                fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
-                fg.style.opacity = 0; // Fade out
-            }
-            self.waitForNextPhotoAndUpdate(fadeDuration);
-        }, displayDuration);
-    };
-
-    video.onerror = (evt) => {
-        const error = evt.target.error;
-        let errorReason = "Unknown error";
-        
-        if (error) {
-            switch(error.code) {
-                case 1: // MEDIA_ERR_ABORTED
-                    errorReason = "Video loading aborted";
-                    break;
-                case 2: // MEDIA_ERR_NETWORK
-                    errorReason = "Network error - Cannot load video";
-                    break;
-                case 3: // MEDIA_ERR_DECODE
-                    errorReason = "Decode error - Unsupported codec or pixel format";
-                    break;
-                case 4: // MEDIA_ERR_SRC_NOT_SUPPORTED
-                    errorReason = "Source not supported - This video format is not compatible";
-                    break;
-                default:
-                    errorReason = `Error code ${error.code}: ${error.message}`;
-            }
-        }
-        
-        handleVideoFailure(errorReason);
-    };
-
-    // 진행 상태 모니터링: stalled 감지
-    video.onstalled = () => {
-        if (!isVideoFailed && self.config.debugToConsole) {
-            Log.warn(`[MMM-ImagesPhotos] Video stalled for ${photoImage.url}`);
-        }
-    };
-
-    // Suspend 이벤트 처리
-    video.onsuspend = () => {
-        if (!isVideoFailed && self.config.debugToConsole) {
-            Log.warn(`[MMM-ImagesPhotos] Video suspended for ${photoImage.url}`);
-        }
-    };
-
-    video.src = photoImage.url;
+  ensureQrCodeOverlay() {
+    if (!this.overlayRoot || this.qrRendered) return;
+    const qrNode = this.createQrCodeNode();
+    if (qrNode) {
+      this.overlayRoot.appendChild(qrNode);
+      this.qrRendered = true;
+    }
   },
 
   clearFadeTimers() {
@@ -534,57 +495,142 @@ Module.register(ourModuleName, {
 
   cleanupFaceStyles() {
     if (typeof document === "undefined" || !document.head) return;
-    document.head.querySelectorAll("style[data-mmip-face-style='true']").forEach((el) => {
+    document.head.querySelectorAll("style[data-mmip-face-style=true]").forEach((el) => {
       el.remove();
     });
   },
 
-  animateTransition(imgEl, container) {
+  handleVideoPlayback(video, photoImage, prevLayer) {
+    const self = this;
+    const displayDuration = this.config.updateInterval * this.config.videoPlaybackMultiplier;
+    const fadeDuration = this.transitionDefaults.fadeDuration;
+    let videoLoadTimeout = null;
+    let isVideoFailed = false;
+
+    const handleVideoFailure = (reason = "Unknown error") => {
+      if (isVideoFailed) return;
+      isVideoFailed = true;
+      if (videoLoadTimeout) clearTimeout(videoLoadTimeout);
+      if (self.timer) clearTimeout(self.timer);
+      Log.warn(`[MMM-ImagesPhotos] Video playback failed for ${photoImage.url}: ${reason}`);
+      self.nextPhoto = null;
+      self.prepareNextPhoto();
+      self.waitForNextPhotoAndUpdate(self.config.retryDelay);
+    };
+
+    videoLoadTimeout = setTimeout(() => {
+      if (!isVideoFailed && video.readyState < 2) {
+        handleVideoFailure("Video load timeout");
+      }
+    }, 10000);
+
+    video.onloadeddata = () => {
+      if (isVideoFailed) return;
+      if (videoLoadTimeout) clearTimeout(videoLoadTimeout);
+
+      const videoDuration = video.duration * 1000;
+      if (videoDuration < displayDuration) {
+        video.loop = true;
+      } else if (videoDuration > displayDuration) {
+        video.loop = false;
+        const maxStartTime = video.duration - (displayDuration / 1000);
+        video.currentTime = Math.random() * maxStartTime;
+      } else {
+        video.loop = false;
+      }
+
+      video.play().catch((err) => handleVideoFailure(`Play error: ${err.message}`));
+
+      const layer = video.parentElement;
+      if (layer) {
+        layer.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
+        layer.style.opacity = 1;
+      }
+      if (prevLayer) {
+        self.scheduleFadeTimer(() => {
+          while (prevLayer.firstChild) prevLayer.removeChild(prevLayer.firstChild);
+          prevLayer.style.opacity = 0;
+        }, fadeDuration + 150);
+      }
+
+      if (self.timer) clearTimeout(self.timer);
+      if (!self.paused) {
+        self.timer = setTimeout(() => {
+          if (self.config.transitionMode !== "crossfade" && layer) {
+            layer.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
+            layer.style.opacity = 0;
+            self.waitForNextPhotoAndUpdate(fadeDuration);
+          } else {
+            self.waitForNextPhotoAndUpdate(0);
+          }
+        }, displayDuration);
+      }
+    };
+
+    video.onerror = (evt) => {
+      const error = evt.target.error;
+      const reason = error ? `MediaError code ${error.code}` : "Unknown error";
+      handleVideoFailure(reason);
+    };
+
+    video.src = photoImage.url;
+  },
+
+  animateTransition(imgEl, container, prevLayer = null) {
     const self = this;
     const cfg = self.config || {};
     const defs = self.transitionDefaults || {};
-    
-    // Use updateInterval for display duration, falling back to transition default
+
     const displayDuration = cfg.updateInterval || defs.displayDuration;
     const blackDuration = cfg.blackDuration || defs.blackDuration;
     const fadeDuration = cfg.fadeDuration || defs.fadeDuration;
     const easing = cfg.transitionEasing || defs.easing;
+    const isCrossfade = self.fullscreen && cfg.transitionMode === "crossfade";
 
-    // The foreground container holds the image. This is what we will fade.
-    const fgContainer = imgEl.parentElement;
-    // In non-FS mode, the main container is the wrapper. In FS mode, it's this.bk.
+    const fgContainer = imgEl.closest ? imgEl.closest(".mmip-foreground") : imgEl.parentElement;
     const mainContainer = self.fullscreen ? self.bk : container;
-    
-    // Ensure the main background is black.
     if (mainContainer) {
       mainContainer.style.backgroundColor = "black";
     }
 
-    if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing}`);
-
-    // Clear any stale fade timers from a previous image and schedule next update
     self.clearFadeTimers();
     if (self.timer) clearTimeout(self.timer);
+
+    const avg = self.computeAverageColor(imgEl);
+
+    if (isCrossfade && fgContainer) {
+      fgContainer.style.backgroundColor = avg || "black";
+      fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
+
+      // Smoothly crossfade new layer over previous layer
+      self.scheduleFadeTimer(() => {
+        fgContainer.style.opacity = 1;
+      }, 30);
+
+      if (prevLayer) {
+        self.scheduleFadeTimer(() => {
+          while (prevLayer.firstChild) prevLayer.removeChild(prevLayer.firstChild);
+          prevLayer.style.opacity = 0;
+        }, fadeDuration + 200);
+      }
+
+      self.waitForNextPhotoAndUpdate(fadeDuration + displayDuration);
+      return;
+    }
+
+    // Classic black -> fade-in -> display -> fade-out mode
     const nextUpdateDelay = blackDuration + fadeDuration + displayDuration + fadeDuration;
     self.waitForNextPhotoAndUpdate(nextUpdateDelay);
-    
-    // Compute average color and apply it to the foreground container
-    const avg = self.computeAverageColor(imgEl);
-    if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: computed avg=${avg}`);
-    
+
     if (fgContainer) {
       fgContainer.style.backgroundColor = avg || "black";
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
-      
-      // After blackDuration, fade IN the foreground container
+
       self.scheduleFadeTimer(() => {
-        if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: fading in`);
         fgContainer.style.opacity = 1;
       }, blackDuration);
 
-      // After display duration, fade OUT the foreground container
       self.scheduleFadeTimer(() => {
-        if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: starting fade-out`);
         fgContainer.style.opacity = 0;
       }, blackDuration + fadeDuration + displayDuration);
     }
@@ -599,40 +645,39 @@ Module.register(ourModuleName, {
       this.timer = null;
     }
   },
+
   resume() {
     this.suspended = false;
-    // On resume, immediately update to the next image.
-    this.updateDom(this.config.animationSpeed);
+    if (!this.paused) {
+      this.updateDom(this.config.animationSpeed);
+    }
   },
 
   getDom() {
     if (!this.nextPhoto && this.loaded) {
-      // Data for the next photo is not ready yet.
+      if (this.wrapper && this.fullscreen) {
+        return this.wrapper;
+      }
       const wrapper = document.createElement("div");
-      if(this.config.debugToConsole) {
+      if (this.config.debugToConsole) {
         wrapper.innerText = "Preparing next photo...";
       }
       return wrapper;
     }
-    
-    if (!this.nextPhoto && !this.loaded) {
-		const wrapper = document.createElement("div");
-		wrapper.innerHTML = this.translate("LOADING");
-		wrapper.className = "dimmed light small";
-		return wrapper;
-	}
 
-    // Clear stale timers and dynamic face-zoom styles before rendering next photo
+    if (!this.nextPhoto && !this.loaded) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = this.translate("LOADING");
+      wrapper.className = "dimmed light small";
+      return wrapper;
+    }
+
     this.clearFadeTimers();
     this.cleanupFaceStyles();
 
-    // Promote next photo to current and prepare the next one in the background
-    this.currentPhoto = JSON.parse(JSON.stringify(this.nextPhoto)); // Deep copy to prevent race conditions
+    this.currentPhoto = JSON.parse(JSON.stringify(this.nextPhoto));
     this.nextPhoto = null;
 
-    if (this.config.debugToConsole) {
-      Log.log(`[MMM-ImagesPhotos] getDom: RENDERING CURRENT PHOTO: ${JSON.stringify(this.currentPhoto)}`);
-    }
     this.prepareNextPhoto();
 
     if (this.fullscreen) {
@@ -644,7 +689,73 @@ Module.register(ourModuleName, {
   isVideo(photo) {
     const videoExtensions = ["mp4", "webm", "ogg", "mov"];
     const url = photo.url.toLowerCase();
-    return videoExtensions.some(ext => url.endsWith(`.${ext}`));
+    return videoExtensions.some((ext) => url.endsWith(`.${ext}`));
+  },
+
+  pickRegularEffect() {
+    const regularEffects = this.config.imageEffects.filter((e) => e !== "ip-face-zoom");
+    const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)] || "ip-still";
+    const randomDuration = (20 + Math.random() * 20).toFixed(2) + "s";
+    return { effectClass: randomEffect, duration: randomDuration, label: `${randomEffect} ${randomDuration}` };
+  },
+
+  createExifWrapper(photoImage) {
+    if (!this.config.showExif || !photoImage) return null;
+
+    const exifWrapper = document.createElement("div");
+    exifWrapper.className = "exif-info";
+    const infoParts = [];
+    const tags = photoImage.exif && photoImage.exif.tags ? photoImage.exif.tags : null;
+
+    if (photoImage.memoryYearsAgo && photoImage.memoryYearsAgo >= 1) {
+      infoParts.push(`<span class="mmip-memory-badge">🎂 ${photoImage.memoryYearsAgo}년 전 오늘</span>`);
+    }
+
+    if (tags) {
+      const timestamp = tags.DateTimeOriginal;
+      if (timestamp && typeof timestamp === "number") {
+        const dateObj = new Date(timestamp * 1000);
+        const year = dateObj.getUTCFullYear();
+        const month = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+        const day = String(dateObj.getUTCDate()).padStart(2, "0");
+        const hour = String(dateObj.getUTCHours()).padStart(2, "0");
+        const minute = String(dateObj.getUTCMinutes()).padStart(2, "0");
+        infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
+      }
+    }
+    if (photoImage.location) {
+      infoParts.push(`📍 ${photoImage.location}`);
+    }
+    if (tags && tags.Model) {
+      infoParts.push(`📷 ${tags.Model}`);
+    }
+    if (tags) {
+      const photoParamParts = [];
+      if (tags.FocalLength) photoParamParts.push(`${tags.FocalLength}mm`);
+      if (tags.FNumber) photoParamParts.push(`f/${tags.FNumber.toFixed(1)}`);
+      if (tags.ExposureTime) {
+        const exposureTime = tags.ExposureTime;
+        photoParamParts.push(exposureTime < 1 ? `1/${Math.round(1 / exposureTime)}s` : `${exposureTime}s`);
+      }
+      if (tags.ISO) photoParamParts.push(`ISO ${tags.ISO}`);
+      if (photoParamParts.length > 0) {
+        infoParts.push(`⚙️ ${photoParamParts.join(" ")}`);
+      }
+    }
+
+    const effectLabel = photoImage.effect || "still";
+    const faceCount = photoImage.face && typeof photoImage.face.count === "number" ? photoImage.face.count : 0;
+    let effectString = `✨ ${effectLabel}`;
+    if (faceCount > 0) {
+      effectString += ` (${faceCount}👤)`;
+    }
+    infoParts.push(effectString);
+
+    if (infoParts.length > 0) {
+      exifWrapper.innerHTML = infoParts.join("<br>");
+      return exifWrapper;
+    }
+    return null;
   },
 
   getDomnotFS() {
@@ -659,19 +770,11 @@ Module.register(ourModuleName, {
     if (photoImage) {
       const fg = document.createElement("div");
       fg.className = "mmip-foreground";
-      fg.style.opacity = 0; // start invisible
+      fg.style.opacity = 0;
+      fg.style.backgroundColor = "black";
       wrapper.appendChild(fg);
 
-      fg.style.backgroundColor = "black";
-
       if (this.isVideo(photoImage)) {
-        const blackDuration = this.transitionDefaults.blackDuration;
-        const fadeDuration = this.transitionDefaults.fadeDuration;
-        this.scheduleFadeTimer(() => {
-          fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
-          fg.style.opacity = 1;
-        }, blackDuration);
-        // --- VIDEO LOGIC ---
         const video = document.createElement("video");
         video.className = "mmip-video";
         video.autoplay = true;
@@ -680,99 +783,55 @@ Module.register(ourModuleName, {
         video.setAttribute("playsinline", "true");
         video.preload = "auto";
         video.style.opacity = this.config.opacity;
-
-        this.handleVideoPlayback(video, photoImage);
-        
+        this.handleVideoPlayback(video, photoImage, null);
         fg.appendChild(video);
-        
-        // No effects or EXIF for videos.
         photoImage.effect = "video";
-
       } else {
-        // --- IMAGE LOGIC (existing code) ---
         const img = document.createElement("img");
         img.id = "mmm-images-photos";
         img.style.maxWidth = this.config.maxWidth;
         img.style.maxHeight = this.config.maxHeight;
         img.style.opacity = this.config.opacity;
-        
+
         let finalEffect = "";
         let isFaceZoom = false;
-
         if (this.config.faceDetection && this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
-          if (Math.random() < 0.4) {
-            isFaceZoom = true;
-          }
+          if (Math.random() < 0.4) isFaceZoom = true;
         }
-        
+
         if (isFaceZoom) {
           const faces = photoImage.face.faces;
           const face = faces[Math.floor(Math.random() * faces.length)];
           const zoomIn = Math.random() < 0.5;
+          const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
+          const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
           if (zoomIn) {
-            const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
-            const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
             const S = 1.15;
-            const fx = fx_perc - 0.5;
-            const fy = fy_perc - 0.5;
-            const Dx = 0;
-            const Dy = 0.3 - 0.5;
-            let Tx = (Dx - S * fx) * 100;
-            let Ty = (Dy - S * fy) * 100;
-            Tx = Math.max(-15, Math.min(15, Tx));
-            Ty = Math.max(-15, Math.min(15, Ty));
+            const Tx = Math.max(-15, Math.min(15, (0 - S * (fx_perc - 0.5)) * 100));
+            const Ty = Math.max(-15, Math.min(15, (-0.2 - S * (fy_perc - 0.5)) * 100));
             const duration = (20 + Math.random() * 20).toFixed(2);
             const keyframeName = `face-pan-zoom-${Date.now()}`;
-            const keyframe = `
-              @keyframes ${keyframeName} {
-                0% { transform: translate(0%, 0%) scale(var(--base-scale)); }
-                100% { transform: translate(${Tx}%, ${Ty}%) scale(calc(var(--base-scale) * ${S})); }
-              }
-            `;
             const styleEl = document.createElement("style");
             styleEl.setAttribute("data-mmip-face-style", "true");
-            styleEl.innerHTML = keyframe;
+            styleEl.innerHTML = `@keyframes ${keyframeName} { 0% { transform: translate(0%, 0%) scale(var(--base-scale)); } 100% { transform: translate(${Tx}%, ${Ty}%) scale(calc(var(--base-scale) * ${S})); } }`;
             document.head.appendChild(styleEl);
             img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
-            finalEffect = `ip-face-pan-zoom-in (to 50%, 30%)`;
-            img.addEventListener("animationend", () => {
-              if(styleEl.parentNode) styleEl.remove();
-            }, { once: true });
+            finalEffect = "ip-face-pan-zoom-in";
           } else {
-            const fx_perc = (face.x + face.w / 2) / photoImage.face.width;
-            const fy_perc = (face.y + face.h / 2) / photoImage.face.height;
             img.style.transformOrigin = `${fx_perc * 100}% ${fy_perc * 100}%`;
             img.className = "bgimage mmip-bgimage ip-face-zoom-out";
-            finalEffect = `ip-face-zoom-out`;
-            const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
+            const randomDuration = (20 + Math.random() * 20).toFixed(2) + "s";
             img.style.animationDuration = randomDuration;
+            finalEffect = `ip-face-zoom-out ${randomDuration}`;
           }
         } else {
-          const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
-          const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
-          finalEffect = randomEffect;
-          img.className = "bgimage mmip-bgimage " + randomEffect;
-          const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
-          img.style.animationDuration = randomDuration;
-          finalEffect += ` ${randomDuration}`;
+          const picked = this.pickRegularEffect();
+          img.className = `bgimage mmip-bgimage ${picked.effectClass}`;
+          img.style.animationDuration = picked.duration;
+          finalEffect = picked.label;
         }
-  
-        let isLandscape = false;
-        if (photoImage.face && photoImage.face.width && photoImage.face.height) {
-          isLandscape = photoImage.face.width > photoImage.face.height;
-        } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ImageWidth && photoImage.exif.tags.ImageHeight) {
-          isLandscape = photoImage.exif.tags.ImageWidth > photoImage.exif.tags.ImageHeight;
-        } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ExifImageWidth && photoImage.exif.tags.ExifImageHeight) {
-          isLandscape = photoImage.exif.tags.ExifImageWidth > photoImage.exif.tags.ExifImageHeight;
-        }
-  
-        if (isLandscape) {
-          img.classList.add("landscape");
-        } else {
-          img.classList.add("portrait");
-        }
-        
-        Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);
+
+        img.classList.add(this.isPhotoPortrait(photoImage) ? "portrait" : "landscape");
         photoImage.effect = finalEffect;
 
         img.onerror = (evt) => {
@@ -780,11 +839,10 @@ Module.register(ourModuleName, {
           setTimeout(() => self.updateDom(), self.config.retryDelay);
         };
         img.onload = (evt) => {
-          try { self.animateTransition(evt.currentTarget, wrapper); } catch (e) { Log.warn(self.name, e); }
+          try { self.animateTransition(evt.currentTarget, wrapper, null); } catch (e) { Log.warn(self.name, e); }
         };
+        try { img.crossOrigin = "Anonymous"; } catch (e) {}
 
-        try { img.crossOrigin = 'Anonymous'; } catch (e) {}
-        
         fg.appendChild(img);
         img.src = photoImage.url;
 
@@ -796,76 +854,9 @@ Module.register(ourModuleName, {
 
       const qrNode = this.createQrCodeNode();
       if (qrNode) fg.appendChild(qrNode);
-
+      this.reportCurrentPhoto();
     }
     return wrapper;
-  },
-
-  createExifWrapper(photoImage) {
-      if (!this.config.showExif || !photoImage) return null;
-      if (this.config.debugToConsole) {
-        Log.log(`[MMM-ImagesPhotos] Building EXIF box for ${photoImage.url} with face count: ${photoImage.face ? photoImage.face.count : 'N/A'}`);
-      }
-      const exifWrapper = document.createElement("div");
-      exifWrapper.className = "exif-info";
-      const infoParts = [];
-      const tags = photoImage.exif && photoImage.exif.tags ? photoImage.exif.tags : null;
-
-      if (tags) {
-        const timestamp = tags.DateTimeOriginal;
-        if (timestamp && typeof timestamp === 'number') {
-          const dateObj = new Date(timestamp * 1000);
-          const year = dateObj.getUTCFullYear();
-          const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-          const day = String(dateObj.getUTCDate()).padStart(2, '0');
-          const hour = String(dateObj.getUTCHours()).padStart(2, '0');
-          const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
-          infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
-        }
-      }
-      if (photoImage.location) {
-          infoParts.push(`📍 ${photoImage.location}`);
-      }
-      if (tags && tags.Model) {
-          infoParts.push(`📷 ${tags.Model}`);
-      }
-      if (tags) {
-        const photoParamParts = [];
-        if (tags.FocalLength) {
-            photoParamParts.push(`${tags.FocalLength}mm`);
-        }
-        if (tags.FNumber) {
-            photoParamParts.push(`f/${tags.FNumber.toFixed(1)}`);
-        }
-        if (tags.ExposureTime) {
-            const exposureTime = tags.ExposureTime;
-            if (exposureTime < 1) {
-                photoParamParts.push(`1/${Math.round(1 / exposureTime)}s`);
-            } else {
-                photoParamParts.push(`${exposureTime}s`);
-            }
-        }
-        if (tags.ISO) {
-            photoParamParts.push(`ISO ${tags.ISO}`);
-        }
-        if (photoParamParts.length > 0) {
-            infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
-        }
-      }
-
-      const effectLabel = photoImage.effect || "still";
-      const faceCount = photoImage.face && typeof photoImage.face.count === "number" ? photoImage.face.count : 0;
-      let effectString = `✨ ${effectLabel}`;
-      if (faceCount > 0) {
-        effectString += ` (${faceCount}👤)`;
-      }
-      infoParts.push(effectString);
-
-      if (infoParts.length > 0) {
-          exifWrapper.innerHTML = infoParts.join('<br>');
-          return exifWrapper;
-      }
-      return null;
   },
 
   getDomFS() {
@@ -875,11 +866,28 @@ Module.register(ourModuleName, {
       this.bk = document.createElement("div");
       this.bk.className = "bgimagefs";
       this.wrapper.appendChild(this.bk);
-      this.fg = document.createElement("div");
-      this.fg.className = "mmip-foreground";
-      this.wrapper.appendChild(this.fg);
+
+      const fg0 = document.createElement("div");
+      fg0.className = "mmip-foreground mmip-layer-under";
+      fg0.style.opacity = 0;
+      const fg1 = document.createElement("div");
+      fg1.className = "mmip-foreground mmip-layer-over";
+      fg1.style.opacity = 0;
+
+      this.wrapper.appendChild(fg0);
+      this.wrapper.appendChild(fg1);
+      this.fgLayers = [fg0, fg1];
+      this.activeLayerIdx = 0;
+
+      this.overlayRoot = document.createElement("div");
+      this.overlayRoot.className = "mmip-overlay-root";
+      this.wrapper.appendChild(this.overlayRoot);
+      this.qrRendered = false;
     }
-    
+
+    this.ensureQrCodeOverlay();
+    this.updatePauseBadge();
+
     if (this.config.fill === true) {
       this.bk.style.filter = `blur(${this.config.blur}px)`;
       this.bk.style["-webkit-filter"] = `blur(${this.config.blur}px)`;
@@ -887,45 +895,98 @@ Module.register(ourModuleName, {
       this.bk.style.backgroundColor = "black";
     }
 
-    if (this.photos.length) {
-      const photoImage = this.currentPhoto;
-      if (photoImage) {
-        while (self.fg.firstChild) {
-          self.fg.removeChild(self.fg.firstChild);
+    const photoImage = this.currentPhoto;
+    if (this.photos.length && photoImage) {
+      const isCrossfade = this.config.transitionMode === "crossfade";
+      const prevLayer = isCrossfade ? this.fgLayers[this.activeLayerIdx] : null;
+      const nextLayerIdx = isCrossfade ? 1 - this.activeLayerIdx : 0;
+      const targetLayer = this.fgLayers[nextLayerIdx];
+      this.activeLayerIdx = nextLayerIdx;
+      this.fg = targetLayer;
+
+      if (prevLayer) {
+        prevLayer.classList.remove("mmip-layer-over");
+        prevLayer.classList.add("mmip-layer-under");
+      }
+      targetLayer.classList.remove("mmip-layer-under");
+      targetLayer.classList.add("mmip-layer-over");
+
+      while (targetLayer.firstChild) {
+        targetLayer.removeChild(targetLayer.firstChild);
+      }
+      targetLayer.style.transition = "none";
+      targetLayer.style.opacity = 0;
+
+      if (this.isVideo(photoImage)) {
+        const video = document.createElement("video");
+        video.className = "mmip-video";
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute("playsinline", "true");
+        video.preload = "auto";
+        video.style.opacity = this.config.opacity;
+        this.handleVideoPlayback(video, photoImage, prevLayer);
+        targetLayer.appendChild(video);
+        photoImage.effect = "video-fs";
+        if (this.config.fill === true) {
+          this.bk.style.backgroundImage = "";
+          this.bk.style.backgroundColor = "black";
         }
-        self.fg.style.opacity = 0;
+      } else {
+        const companion = this.pickPortraitCompanion(photoImage);
 
-        if (this.isVideo(photoImage)) {
-          const blackDuration = this.transitionDefaults.blackDuration;
-          const fadeDuration = this.transitionDefaults.fadeDuration;
-          this.scheduleFadeTimer(() => {
-            self.fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
-            self.fg.style.opacity = 1;
-          }, blackDuration);
-          // --- VIDEO LOGIC (FS) ---
-          const video = document.createElement("video");
-          video.className = "mmip-video"; // Use the new video class
-          video.autoplay = true;
-          video.muted = true;
-          video.playsInline = true;
-          video.setAttribute("playsinline", "true");
-          video.preload = "auto";
-          video.style.opacity = this.config.opacity;
+        if (companion) {
+          // --- PORTRAIT 2-UP COLLAGE ---
+          photoImage.companion = companion;
+          const grid = document.createElement("div");
+          grid.className = "mmip-collage-grid";
 
-          this.handleVideoPlayback(video, photoImage);
-          
-          this.fg.appendChild(video);
-          photoImage.effect = "video-fs";
+          const picked = this.pickRegularEffect();
+          photoImage.effect = `collage · ${picked.effectClass}`;
 
-          if (this.config.fill === true) {
-            this.bk.style.backgroundImage = ``;
-            this.bk.style.backgroundColor = "black";
+          const pair = [photoImage, companion];
+          let loadedCount = 0;
+          let firstImgEl = null;
+
+          pair.forEach((item, idx) => {
+            const cell = document.createElement("div");
+            cell.className = "mmip-collage-cell";
+            const img = document.createElement("img");
+            const eff = idx === 0 ? picked : this.pickRegularEffect();
+            img.className = `bgimage mmip-bgimage mmip-collage-img portrait ${eff.effectClass}`;
+            img.style.animationDuration = eff.duration;
+            img.style.opacity = self.config.opacity;
+            try { img.crossOrigin = "Anonymous"; } catch (e) {}
+
+            img.onload = () => {
+              if (!firstImgEl) firstImgEl = img;
+              loadedCount++;
+              if (loadedCount === 2) {
+                try { self.animateTransition(firstImgEl, self.bk, prevLayer); } catch (e) { Log.warn(self.name, e); }
+              }
+            };
+            img.onerror = () => {
+              loadedCount++;
+              if (loadedCount === 2 && firstImgEl) {
+                try { self.animateTransition(firstImgEl, self.bk, prevLayer); } catch (e) { Log.warn(self.name, e); }
+              }
+            };
+
+            img.src = item.url;
+            cell.appendChild(img);
+            grid.appendChild(cell);
+          });
+
+          targetLayer.appendChild(grid);
+          if (this.config.showExif) {
+            const exifWrapper = this.createExifWrapper(photoImage);
+            if (exifWrapper) targetLayer.appendChild(exifWrapper);
           }
-
         } else {
-          // --- IMAGE LOGIC (FS - existing code) ---
+          // --- SINGLE IMAGE LOGIC (FS) ---
           const img = document.createElement("img");
-          
+
           let finalEffect = "";
           let isFaceZoom = false;
 
@@ -934,40 +995,22 @@ Module.register(ourModuleName, {
               isFaceZoom = true;
             }
           }
-      
+
           if (isFaceZoom) {
-            // Face zoom logic here... (same as before)
+            // Intentionally keep static when face zoom branch is selected
           } else {
-            const regularEffects = this.config.imageEffects.filter(e => e !== 'ip-face-zoom');
-            const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)];
-            finalEffect = randomEffect;
-            img.className = "bgimage mmip-bgimage " + randomEffect;
-            const randomDuration = (20 + Math.random() * 20).toFixed(2) + 's';
-            img.style.animationDuration = randomDuration;
-            finalEffect += ` ${randomDuration}`;
+            const picked = this.pickRegularEffect();
+            img.className = `bgimage mmip-bgimage ${picked.effectClass}`;
+            img.style.animationDuration = picked.duration;
+            finalEffect = picked.label;
           }
-      
-          let isLandscape = false;
-          if (photoImage.face && photoImage.face.width && photoImage.face.height) {
-            isLandscape = photoImage.face.width > photoImage.face.height;
-          } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ImageWidth && photoImage.exif.tags.ImageHeight) {
-            isLandscape = photoImage.exif.tags.ImageWidth > photoImage.exif.tags.ImageHeight;
-          } else if (photoImage.exif && photoImage.exif.tags && photoImage.exif.tags.ExifImageWidth && photoImage.exif.tags.ExifImageHeight) {
-            isLandscape = photoImage.exif.tags.ExifImageWidth > photoImage.exif.tags.ExifImageHeight;
-          }
-      
-          if (isLandscape) {
-            img.classList.add("landscape");
-          } else {
-            img.classList.add("portrait");
-          }
-          
-          Log.info(`[MMM-ImagesPhotos] Applying effect: ${finalEffect} to ${photoImage.url}`);
+
+          img.classList.add(this.isPhotoPortrait(photoImage) ? "portrait" : "landscape");
           photoImage.effect = finalEffect;
 
           img.style.position = "absolute";
           img.style.opacity = self.config.opacity;
-          
+
           img.onerror = (evt) => {
             Log.error("MMM-ImagesPhotos image load failed", evt.currentTarget.src);
             setTimeout(() => this.updateDom(), this.config.retryDelay);
@@ -990,38 +1033,31 @@ Module.register(ourModuleName, {
             if (self.config.fill === true) {
               self.bk.style.backgroundImage = `url(${eventImage.src})`;
             }
-            
-            try { self.animateTransition(eventImage, self.bk); } catch (e) { Log.warn(self.name, e); }
+
+            try { self.animateTransition(eventImage, self.bk, prevLayer); } catch (e) { Log.warn(self.name, e); }
           };
 
-          try { img.crossOrigin = 'Anonymous'; } catch (e) {}
-          
+          try { img.crossOrigin = "Anonymous"; } catch (e) {}
           img.src = photoImage.url;
-          this.fg.appendChild(img);
+          targetLayer.appendChild(img);
 
           if (this.config.showExif) {
-              const exifWrapper = this.createExifWrapper(photoImage);
-              if (exifWrapper) this.fg.appendChild(exifWrapper);
+            const exifWrapper = this.createExifWrapper(photoImage);
+            if (exifWrapper) targetLayer.appendChild(exifWrapper);
           }
         }
-        
-        const qrNode = this.createQrCodeNode();
-        if (qrNode) this.fg.appendChild(qrNode);
       }
+
+      this.reportCurrentPhoto();
     }
     return this.wrapper;
   },
 
-  getScripts() {
-    return [];
-  },
-
   processPhotos(data) {
-    const self = this;
     this.photos = data;
     if (this.loaded === false) {
       if (this.suspended === false) {
-        self.updateDom(self.config.animationSpeed);
+        this.updateDom(this.config.animationSpeed);
       }
     }
     this.loaded = true;

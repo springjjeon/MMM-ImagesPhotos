@@ -1,149 +1,227 @@
-
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>매직미러 사진 올리기</title>
+    <title>매직미러 사진 관리 & 리모컨</title>
     <style>
-        /* General styles */
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; }
-        .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h2 { color: #333; margin-bottom: 20px; margin-top: 0; }
-        input[type="file"] { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; width: 80%; background: #fafafa; }
-        
-        /* Upload Button */
-        .upload-btn { padding: 15px 30px; font-size: 18px; background: #007BFF; color: white; border: none; border-radius: 10px; font-weight: bold; width: 100%; cursor: pointer; transition: background-color 0.2s; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; text-align: center; padding: 16px; background-color: #f4f5f9; max-width: 780px; margin: 0 auto; color: #222; }
+        .container { background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.07); margin-bottom: 18px; }
+        h2, h3 { color: #222; margin-top: 0; margin-bottom: 14px; }
+        input[type="file"] { margin-bottom: 16px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%; box-sizing: border-box; background: #fafafa; }
+
+        .upload-btn { padding: 15px 30px; font-size: 17px; background: #007BFF; color: white; border: none; border-radius: 10px; font-weight: bold; width: 100%; cursor: pointer; transition: background-color 0.2s; }
         .upload-btn:hover { background: #0056b3; }
 
-        /* Toolbar buttons */
-        .toolbar-btn { padding: 12px; font-size: 14px; color: white; border: none; border-radius: 8px; width: 100%; cursor: pointer; font-weight: 500; transition: background-color 0.2s; }
+        .toolbar-btn { padding: 11px 14px; font-size: 14px; color: white; border: none; border-radius: 9px; width: 100%; cursor: pointer; font-weight: 600; transition: opacity 0.2s, transform 0.1s; }
+        .toolbar-btn:active { transform: scale(0.98); }
+        .toolbar-btn:disabled { opacity: 0.55; cursor: not-allowed; }
         .show-all-btn { background: #28a745; }
-        .show-all-btn:hover { background: #218838; }
         .hide-all-btn { background: #fd7e14; }
-        .hide-all-btn:hover { background: #e06200; }
+
+        /* Remote Control Grid */
+        .remote-now-playing { background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: #444; text-align: left; word-break: break-all; }
+        .remote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+        .remote-btn { padding: 12px 10px; border: none; border-radius: 10px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        .remote-btn:hover { opacity: 0.9; }
+        .remote-btn.primary { background: #007bff; }
+        .remote-btn.warning { background: #fd7e14; }
+        .remote-btn.danger { background: #dc3545; }
+        .remote-btn.success { background: #28a745; }
+        .remote-btn.dark { background: #343a40; }
+        #remote-feedback { margin-top: 10px; font-size: 13px; color: #555; min-height: 18px; text-align: left; }
+
+        /* Health Dashboard */
+        .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 10px; text-align: left; }
+        .health-card { background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; padding: 10px 12px; }
+        .health-label { font-size: 11px; color: #777; margin-bottom: 4px; }
+        .health-value { font-size: 15px; font-weight: 700; color: #222; }
+        .badge-on { color: #28a745; }
+        .badge-off { color: #dc3545; }
 
         /* Folder List */
-        .folder-list { list-style: none; padding: 0; text-align: left; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-top: 20px;}
-        .folder-item { border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.2s ease; padding-right: 15px; }
+        .folder-list { list-style: none; padding: 0; text-align: left; border: 1px solid #e2e6ee; border-radius: 10px; overflow: hidden; margin-top: 16px; }
+        .folder-item { border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.2s ease; padding-right: 14px; }
         .folder-item:last-child { border-bottom: none; }
         .folder-item:hover { background-color: #f0f7ff; }
-        
         .folder-item.is-hidden .folder-name { color: #999; text-decoration: line-through; font-weight: normal; }
         .folder-item.is-hidden .folder-icon { opacity: 0.5; }
-        
-        .folder-info { display: flex; align-items: center; gap: 8px; padding: 12px 0 12px 15px; }
-        .folder-name { font-size: 16px; font-weight: 500; color: #333; }
-        .folder-icon { color: #5dade2; }
-
-        .folder-link {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-            color: inherit;
-        }
-        .folder-item:hover .folder-name {
-            text-decoration: underline;
-        }
-
+        .folder-info { display: flex; align-items: center; gap: 8px; padding: 12px 0 12px 14px; }
+        .folder-name { font-size: 15px; font-weight: 500; color: #333; }
+        .folder-link { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; }
         .toggle-icon { cursor: pointer; display: inline-flex; justify-content: center; align-items: center; width: 20px; height: 20px; font-size: 12px; color: #777; user-select: none; border-radius: 4px; }
-        .toggle-icon:hover { background-color: #e9e9e9; }
         .folder-actions { display: flex; gap: 8px; }
-
-        /* Action Buttons in list */
-        .action-btn { padding: 6px 12px; font-size: 13px; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 500; transition: background-color 0.2s; }
-        .manage-btn { background: #007BFF; }
-        .manage-btn:hover { background: #0056b3; }
+        .action-btn { padding: 6px 12px; font-size: 13px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
         .toggle-btn.show-btn { background: #28a745; }
-        .toggle-btn.show-btn:hover { background: #218838; }
         .toggle-btn.hide-btn { background: #fd7e14; }
-        .toggle-btn.hide-btn:hover { background: #e06200; }
 
-        /* File list preview */
-        #file-list-container {
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 20px;
-            text-align: left;
-            background-color: #f9f9f9;
-        }
-        .file-item {
-            padding: 6px 10px;
-            font-size: 14px;
-            color: #333;
-            border-bottom: 1px solid #eee;
-        }
-        .file-item:last-child {
-            border-bottom: none;
-        }
+        #file-list-container { max-height: 150px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 16px; text-align: left; background-color: #f9f9f9; }
+        .file-item { padding: 6px 8px; font-size: 13px; color: #333; border-bottom: 1px solid #eee; }
+        .file-item:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
+    <!-- 액자 리모컨 -->
+    <div class="container" style="text-align: left;">
+        <h3>🎛️ 액자 리모컨</h3>
+        <div class="remote-now-playing" id="now-playing">상태 불러오는 중...</div>
+        <div class="remote-grid">
+            <button type="button" class="remote-btn primary" onclick="sendRemote('next')">⏭️ 다음 사진</button>
+            <button type="button" class="remote-btn warning" id="pause-btn" onclick="sendRemote('toggle-pause')">⏯️ 일시정지</button>
+            <button type="button" class="remote-btn danger" onclick="hideCurrentPhoto()">🙈 현재 사진 숨기기</button>
+            <button type="button" class="remote-btn success" onclick="sendRemote('screen-on')">📺 화면 켜기</button>
+            <button type="button" class="remote-btn dark" onclick="sendRemote('screen-off')">🌙 화면 끄기</button>
+        </div>
+        <div id="remote-feedback"></div>
+    </div>
+
+    <!-- 사진 업로드 -->
     <div class="container">
         <h2>📸 매직미러 사진 올리기</h2>
         <form action="/upload" method="post" enctype="multipart/form-data">
-            <p style="color: #666; font-size: 14px;">한 번에 여러 장을 선택할 수 있습니다.</p>
-            
-            <!-- 폴더 선택 섹션 -->
-            <div style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-radius: 8px; border: 1px solid #e0e0e0;">
-                <label for="folderSelect" style="display: block; margin-bottom: 12px; font-weight: 500; color: #333;">
-                    📁 사진을 저장할 폴더 선택
-                </label>
+            <p style="color: #666; font-size: 14px; margin-top: 0;">한 번에 여러 장 선택 가능 · 아이폰 HEIC 자동 JPG 변환 · 동영상 백그라운드 변환</p>
+            <div style="margin: 16px 0; padding: 14px; background: #f8f9fc; border-radius: 10px; border: 1px solid #e6eaf2; text-align: left;">
+                <label for="folderSelect" style="display: block; margin-bottom: 10px; font-weight: 600; color: #333;">📁 저장할 폴더 선택</label>
                 <div style="margin-bottom: 10px;">
-                    <select name="folderName" id="folderSelect" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px;">
+                    <select name="folderName" id="folderSelect" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;">
                         {{folderOptions}}
                     </select>
                 </div>
                 <div id="customFolderContainer" style="display: none;">
-                    <input type="text" name="customFolder" id="customFolder" placeholder="새 폴더명 입력 (예: 우리집 강아지)"
-                           style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px;">
+                    <input type="text" name="customFolder" id="customFolder" placeholder="새 폴더명 입력 (예: 2026_제주여행)" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px;">
                 </div>
             </div>
-            
-            <input type="file" name="photos" id="photo-input" accept="image/*,video/*" multiple required>
+
+            <input type="file" name="photos" id="photo-input" accept="image/*,video/*,.heic,.heif" multiple required>
             <div id="file-list-container"></div>
-            <p style="color: #666; font-size: 12px; margin-top: 8px;">지원 확장자: jpg, png, gif, heic, mp4, webm, ogg, mov</p>
+            <p style="color: #666; font-size: 12px; margin-top: 6px;">지원: jpg, png, gif, webp, heic(자동변환), mp4, webm, ogg, mov</p>
             <button type="submit" class="upload-btn">전송하기 🚀</button>
         </form>
     </div>
 
-    <div class="container" style="padding-top: 20px; padding-bottom: 20px; text-align: left;">
-        <h3 style="margin-top: 0; margin-bottom: 15px; color: #333;">⚙️ 시스템 관리</h3>
-        <div id="restart-container" style="display: flex; align-items: flex-start; gap: 10px;">
-            <button type="button" id="restart-mm-btn" class="toolbar-btn" style="background-color: #6c757d; width: auto; padding: 12px 20px;">
-                🔄 MagicMirror 재시작
-            </button>
-            <form action="/manage/convert-all-videos" method="post" onsubmit="return confirm('모든 동영상을 검사하고 필요한 경우 변환합니다. 시스템에 부하를 줄 수 있으며, 시간이 다소 걸릴 수 있습니다. 계속하시겠습니까?');">
-                <button type="submit" class="toolbar-btn" style="background-color: #fd7e14; width: auto; padding: 12px 20px;">
-                    📹 모든 동영상 변환
-                </button>
-            </form>
-            <p id="restart-status" style="display: none; color: #333; margin-top: 10px; font-weight: 500;"></p>
+    <!-- 시스템 상태 대시보드 -->
+    <div class="container" style="text-align: left;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="margin: 0;">📊 시스템 상태</h3>
+            <button type="button" onclick="loadSystemStatus()" style="padding: 5px 10px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer;">새로고침</button>
         </div>
+        <div class="health-grid">
+            <div class="health-card"><div class="health-label">MagicMirror / 화면</div><div class="health-value" id="st-mm">-</div></div>
+            <div class="health-card"><div class="health-label">CPU 온도</div><div class="health-value" id="st-temp">-</div></div>
+            <div class="health-card"><div class="health-label">메모리</div><div class="health-value" id="st-mem">-</div></div>
+            <div class="health-card"><div class="health-label">디스크 여유</div><div class="health-value" id="st-disk">-</div></div>
+            <div class="health-card"><div class="health-label">얼굴/위치 캐시</div><div class="health-value" id="st-cache">-</div></div>
+            <div class="health-card"><div class="health-label">동영상 변환 큐</div><div class="health-value" id="st-video">-</div></div>
+        </div>
+
+        <div id="restart-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #eee;">
+            <button type="button" id="restart-mm-btn" class="toolbar-btn" style="background-color: #6c757d; width: auto; padding: 10px 18px;">🔄 MagicMirror 재시작</button>
+            <form action="/manage/convert-all-videos" method="post" onsubmit="return confirm('모든 동영상을 검사하고 필요한 경우 백그라운드에서 변환합니다. 계속하시겠습니까?');" style="margin: 0;">
+                <button type="submit" class="toolbar-btn" style="background-color: #fd7e14; width: auto; padding: 10px 18px;">📹 전체 동영상 최적화</button>
+            </form>
+        </div>
+        <p id="restart-status" style="display: none; color: #333; margin-top: 10px; font-weight: 500; font-size: 13px;"></p>
     </div>
-    
+
     {{folderListHtml}}
 
     <script>
+        async function loadSystemStatus() {
+            try {
+                const res = await fetch('/manage/api/system-status');
+                const data = await res.json();
+                if (!data.ok) return;
+
+                const mmText = data.mmRunning ? '<span class="badge-on">실행 중</span>' : '<span class="badge-off">중지됨</span>';
+                const scrText = data.screenStatus === 'on' ? '켜짐' : (data.screenStatus === 'off' ? '꺼짐' : '확인불가');
+                document.getElementById('st-mm').innerHTML = `${mmText} · ${scrText}`;
+                document.getElementById('st-temp').textContent = data.cpuTempC !== null ? `${data.cpuTempC}°C` : '-';
+                document.getElementById('st-mem').textContent = `${data.memory.percent}% (${data.memory.usedMB}MB)`;
+                document.getElementById('st-disk').textContent = data.disk ? `${data.disk.avail} (${data.disk.percent})` : '-';
+
+                if (data.mm) {
+                    document.getElementById('st-cache').textContent = `👤${data.mm.faceCacheCount} · 📍${data.mm.geocodeCacheCount}`;
+                    const pauseBtn = document.getElementById('pause-btn');
+                    if (pauseBtn) pauseBtn.textContent = data.mm.paused ? '▶️ 재생 재개' : '⏯️ 일시정지';
+
+                    const cur = data.mm.currentPhoto;
+                    const np = document.getElementById('now-playing');
+                    if (cur && cur.path) {
+                        const pairNote = cur.companionPath ? ` + ${cur.companionPath.split('/').pop()}` : '';
+                        const pauseNote = data.mm.paused ? ' [일시정지]' : '';
+                        np.textContent = `🖼️ 현재 표시: ${cur.path}${pairNote}${pauseNote}`;
+                    } else {
+                        np.textContent = '🖼️ 현재 표시 중인 사진 정보 대기 중...';
+                    }
+                } else {
+                    document.getElementById('st-cache').textContent = '-';
+                    document.getElementById('now-playing').textContent = data.mmRunning ? '🖼️ MagicMirror 기동 중...' : '🌙 현재 화면이 꺼져 있습니다.';
+                }
+
+                const vq = data.videoQueue;
+                document.getElementById('st-video').textContent = vq.running ? `변환 중 (${vq.queuedCount + 1})` : '대기';
+            } catch (err) {
+                console.error('Status fetch failed:', err);
+            }
+        }
+
+        async function sendRemote(action) {
+            const fb = document.getElementById('remote-feedback');
+            fb.textContent = '⏳ 명령 전송 중...';
+            try {
+                const res = await fetch('/manage/api/remote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                const labels = {
+                    'next': '⏭️ 다음 사진으로 전환했습니다.',
+                    'toggle-pause': data.paused ? '⏸️ 슬라이드쇼를 일시정지했습니다.' : '▶️ 슬라이드쇼를 재개했습니다.',
+                    'screen-on': '📺 화면을 켰습니다.',
+                    'screen-off': '🌙 화면을 껐습니다.'
+                };
+                fb.textContent = labels[action] || '✅ 완료했습니다.';
+                setTimeout(loadSystemStatus, 800);
+            } catch (err) {
+                fb.textContent = `❌ 실패: ${err.message}`;
+            }
+        }
+
+        async function hideCurrentPhoto() {
+            if (!confirm('현재 액자에 표시 중인 사진을 숨김 처리하고 다음 사진으로 넘길까요?')) return;
+            const fb = document.getElementById('remote-feedback');
+            fb.textContent = '⏳ 현재 사진 숨기는 중...';
+            try {
+                const res = await fetch('/manage/api/remote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'hide-current' })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                fb.textContent = `🙈 숨김 완료: ${data.hiddenPath}`;
+                setTimeout(loadSystemStatus, 1000);
+            } catch (err) {
+                fb.textContent = `❌ 숨김 실패: ${err.message}`;
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
-            // Handle status notifications from redirects
+            loadSystemStatus();
+            setInterval(loadSystemStatus, 10000);
+
             const urlParams = new URLSearchParams(window.location.search);
             const status = urlParams.get('status');
             if (status) {
                 let message = '';
                 if (status === 'conversion_started') {
-                    message = '동영상 변환 작업이 백그라운드에서 시작되었습니다. 완료되면 서버 로그를 확인하세요.';
+                    message = '동영상 변환 작업이 백그라운드 큐에 등록되었습니다. 시스템 상태 카드에서 진행 여부를 확인할 수 있습니다.';
                 } else if (status === 'conversion_running') {
-                    message = '이미 동영상 변환 작업이 진행 중입니다.';
+                    message = '이미 전체 동영상 변환 작업이 진행 중입니다.';
                 }
-                if (message) {
-                    alert(message);
-                }
-                // Clean the URL
+                if (message) alert(message);
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
         });
@@ -158,13 +236,9 @@
 
         if (photoInput && fileListContainer) {
             photoInput.addEventListener('change', function() {
-                // Clear previous list
                 fileListContainer.innerHTML = '';
-
                 if (this.files && this.files.length > 0) {
-                    // Show container only when files are selected
                     fileListContainer.style.display = 'block';
-                    
                     for (const file of this.files) {
                         const fileItem = document.createElement('div');
                         fileItem.className = 'file-item';
@@ -175,50 +249,35 @@
                     fileListContainer.style.display = 'none';
                 }
             });
-            // Initially hide the container
             fileListContainer.style.display = 'none';
         }
 
-        if(restartBtn) {
+        if (restartBtn) {
             restartBtn.addEventListener('click', () => {
-                if (!confirm('MagicMirror를 재시작하시겠습니까?')) {
-                    return;
-                }
-
+                if (!confirm('MagicMirror를 재시작하시겠습니까?')) return;
                 restartBtn.disabled = true;
                 restartStatus.style.display = 'block';
                 restartStatus.style.color = '#333';
-                restartStatus.textContent = '🔄 재시작 명령을 보냈습니다. 잠시만 기다려주세요...';
-
-                fetch('/manage/restart-mm', {
-                    method: 'POST'
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`Server responded with status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        restartStatus.style.color = '#28a745';
-                        restartStatus.textContent = '✅ 성공! 5초 후 페이지를 새로고침합니다.';
-                        setTimeout(() => {
-                            window.location.href = '/';
-                        }, 5000);
-                    } else {
-                        throw new Error(data.message || 'Restart failed. Check server logs.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error restarting MagicMirror:', error);
-                    restartStatus.style.color = '#dc3545';
-                    restartStatus.textContent = '❌ 오류 발생! 서버 로그를 확인해주세요.';
-                    restartBtn.disabled = false;
-                });
+                restartStatus.textContent = '🔄 재시작 명령을 보냈습니다...';
+                fetch('/manage/restart-mm', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            restartStatus.style.color = '#28a745';
+                            restartStatus.textContent = '✅ 재시작 요청 완료! 5초 후 새로고침합니다.';
+                            setTimeout(() => { window.location.href = '/'; }, 5000);
+                        } else {
+                            throw new Error(data.message || 'Restart failed');
+                        }
+                    })
+                    .catch(err => {
+                        restartStatus.style.color = '#dc3545';
+                        restartStatus.textContent = `❌ 오류: ${err.message}`;
+                        restartBtn.disabled = false;
+                    });
             });
         }
-        
+
         function toggleCustomFolderInput() {
             if (folderSelect.value === '') {
                 customFolderContainer.style.display = 'block';
@@ -228,35 +287,25 @@
                 customFolderInput.value = '';
             }
         }
-
         if (folderSelect && customFolderInput && customFolderContainer) {
-            // 페이지 로드 시 초기 상태 확인
             toggleCustomFolderInput();
-
-            // 드롭다운 변경 시 customFolder 입력 필드 표시/숨김
             folderSelect.addEventListener('change', toggleCustomFolderInput);
         }
 
-        // 하위 폴더 접기/펼치기 토글 함수
         function toggleFolder(path, element) {
             const li = element.closest('li');
             li.classList.toggle('collapsed');
-            const isCollapsed = li.classList.contains('collapsed');
-            element.innerText = isCollapsed ? '▶' : '▼';
+            element.innerText = li.classList.contains('collapsed') ? '▶' : '▼';
             updateVisibility();
         }
-
-        // 접힌 폴더의 모든 하위 항목을 찾아 숨기는 함수
         function updateVisibility() {
             const rows = document.querySelectorAll('li[data-path]');
             const collapsedPaths = Array.from(rows)
                 .filter(r => r.classList.contains('collapsed'))
                 .map(r => r.getAttribute('data-path') + '/');
-            
             rows.forEach(row => {
-                const path = row.getAttribute('data-path');
-                const isHidden = collapsedPaths.some(cp => path.startsWith(cp));
-                row.style.display = isHidden ? 'none' : 'flex';
+                const p = row.getAttribute('data-path');
+                row.style.display = collapsedPaths.some(cp => p.startsWith(cp)) ? 'none' : 'flex';
             });
         }
     </script>

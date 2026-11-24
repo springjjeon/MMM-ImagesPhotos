@@ -20,6 +20,7 @@ const os = require("os");
 const CACHE_DIR = path.join(__dirname, ".cache");
 const FACE_CACHE_FILE = path.join(CACHE_DIR, "face-detection-cache.json");
 const GEOCODE_CACHE_FILE = path.join(CACHE_DIR, "geocode-cache.json");
+const DATE_CACHE_FILE = path.join(CACHE_DIR, "exif-date-cache.json");
 const CACHE_SAVE_DEBOUNCE_MS = 3000;
 const FACE_SCRIPT_TIMEOUT_MS = 15000;
 const GEOCODE_TIMEOUT_MS = 10000;
@@ -50,6 +51,17 @@ function saveJsonCacheAtomic(filePath, data) {
 	} catch (err) {
 		console.error(`[MMM-ImagesPhotos] Failed to save cache ${path.basename(filePath)}: ${err.message}`);
 	}
+}
+
+function computeMemoryYearsAgo(year, month, day) {
+	const now = new Date();
+	const todayYear = now.getFullYear();
+	const todayMonth = now.getMonth() + 1;
+	const todayDay = now.getDate();
+	if (month === todayMonth && day === todayDay && todayYear > year) {
+		return todayYear - year;
+	}
+	return 0;
 }
 
 async function reverseGeocode(lat, lon, language) {
@@ -96,8 +108,14 @@ module.exports = NodeHelper.create({
 	path_images: {},
 	faceCache: {},
 	geocodeCache: {},
+	dateCache: {},
 	faceCacheSaveTimer: null,
 	geocodeCacheSaveTimer: null,
+	dateCacheSaveTimer: null,
+	activeInstances: new Set(),
+	currentDisplayed: {},
+	pausedState: false,
+	apiRoutesRegistered: false,
 
 	getLocalIp() {
 		const interfaces = os.networkInterfaces();
@@ -158,6 +176,16 @@ module.exports = NodeHelper.create({
 		}, CACHE_SAVE_DEBOUNCE_MS);
 	},
 
+	scheduleSaveDateCache() {
+		if (this.dateCacheSaveTimer) {
+			clearTimeout(this.dateCacheSaveTimer);
+		}
+		this.dateCacheSaveTimer = setTimeout(() => {
+			this.dateCacheSaveTimer = null;
+			saveJsonCacheAtomic(DATE_CACHE_FILE, this.dateCache);
+		}, CACHE_SAVE_DEBOUNCE_MS);
+	},
+
 	flushCaches() {
 		if (this.faceCacheSaveTimer) {
 			clearTimeout(this.faceCacheSaveTimer);
@@ -168,6 +196,11 @@ module.exports = NodeHelper.create({
 			clearTimeout(this.geocodeCacheSaveTimer);
 			this.geocodeCacheSaveTimer = null;
 			saveJsonCacheAtomic(GEOCODE_CACHE_FILE, this.geocodeCache);
+		}
+		if (this.dateCacheSaveTimer) {
+			clearTimeout(this.dateCacheSaveTimer);
+			this.dateCacheSaveTimer = null;
+			saveJsonCacheAtomic(DATE_CACHE_FILE, this.dateCache);
 		}
 	},
 
@@ -265,8 +298,12 @@ module.exports = NodeHelper.create({
 		console.log(`Starting node helper for: ${this.name}`);
 		this.faceCache = loadJsonCache(FACE_CACHE_FILE);
 		this.geocodeCache = loadJsonCache(GEOCODE_CACHE_FILE);
+		this.dateCache = loadJsonCache(DATE_CACHE_FILE);
+		this.activeInstances = new Set();
+		this.currentDisplayed = {};
+		this.pausedState = false;
 		console.log(
-			`[MMM-ImagesPhotos] Loaded cache: ${Object.keys(this.faceCache).length} face entries, ${Object.keys(this.geocodeCache).length} geocode entries`
+			`[MMM-ImagesPhotos] Loaded cache: ${Object.keys(this.faceCache).length} face, ${Object.keys(this.geocodeCache).length} geocode, ${Object.keys(this.dateCache).length} date entries`
 		);
 	},
 
@@ -283,13 +320,110 @@ module.exports = NodeHelper.create({
 		console.log(`[MMM-ImagesPhotos] Media path (${id}): ${this.path_images[id]}`);
 	},
 
+	registerApiRoutes() {
+		if (this.apiRoutesRegistered) return;
+		this.apiRoutesRegistered = true;
+
+		this.expressApp.use("/MMM-ImagesPhotos/api", express.json());
+
+		this.expressApp.get("/MMM-ImagesPhotos/api/status", (req, res) => {
+			const instances = Array.from(this.activeInstances);
+			const primaryId = instances[0] || null;
+			const currentPhoto = primaryId ? (this.currentDisplayed[primaryId] || null) : null;
+			res.json({
+				ok: true,
+				instances,
+				paused: this.pausedState,
+				currentPhoto,
+				faceCacheCount: Object.keys(this.faceCache).length,
+				geocodeCacheCount: Object.keys(this.geocodeCache).length,
+				dateCacheCount: Object.keys(this.dateCache).length
+			});
+		});
+
+		this.expressApp.post("/MMM-ImagesPhotos/api/refresh", (req, res) => {
+			const instances = Array.from(this.activeInstances);
+			instances.forEach((id) => {
+				this.sendSocketNotification("PHOTOS_UPDATED", { id });
+			});
+			console.log(`[MMM-ImagesPhotos] Live refresh broadcast to ${instances.length} instance(s)`);
+			res.json({ ok: true, refreshed: instances });
+		});
+
+		this.expressApp.post("/MMM-ImagesPhotos/api/control", (req, res) => {
+			const action = req.body && req.body.action;
+			const allowed = ["next", "pause", "resume", "toggle-pause"];
+			if (!allowed.includes(action)) {
+				return res.status(400).json({ ok: false, error: "Invalid action" });
+			}
+			if (action === "pause") this.pausedState = true;
+			else if (action === "resume") this.pausedState = false;
+			else if (action === "toggle-pause") this.pausedState = !this.pausedState;
+
+			const instances = Array.from(this.activeInstances);
+			instances.forEach((id) => {
+				this.sendSocketNotification("REMOTE_CONTROL", { id, action });
+			});
+			console.log(`[MMM-ImagesPhotos] Remote control action=${action} sent to ${instances.length} instance(s)`);
+			res.json({ ok: true, action, paused: this.pausedState });
+		});
+
+		this.expressApp.post("/MMM-ImagesPhotos/api/hide-current", (req, res) => {
+			const instances = Array.from(this.activeInstances);
+			const primaryId = instances[0];
+			const current = primaryId ? this.currentDisplayed[primaryId] : null;
+			if (!primaryId || !current || !current.path) {
+				return res.status(404).json({ ok: false, error: "No active photo to hide" });
+			}
+
+			const baseDir = this.path_images[primaryId];
+			const fullPath = path.resolve(baseDir, current.path);
+			if (!fullPath.startsWith(baseDir + path.sep) || !fs.existsSync(fullPath)) {
+				return res.status(404).json({ ok: false, error: "Current photo file not found" });
+			}
+
+			const dirName = path.dirname(fullPath);
+			const baseName = path.basename(fullPath);
+			if (!baseName.startsWith("!")) {
+				const hiddenPath = path.join(dirName, `!${baseName}`);
+				try {
+					fs.renameSync(fullPath, hiddenPath);
+					console.log(`[MMM-ImagesPhotos] Hidden current photo via remote: ${current.path}`);
+				} catch (err) {
+					return res.status(500).json({ ok: false, error: err.message });
+				}
+			}
+
+			instances.forEach((id) => {
+				this.sendSocketNotification("PHOTOS_UPDATED", { id });
+				this.sendSocketNotification("REMOTE_CONTROL", { id, action: "next" });
+			});
+
+			res.json({ ok: true, hiddenPath: current.path });
+		});
+	},
+
 	async socketNotificationReceived(notification, payload) {
 		if (notification === "CONFIG") {
 			this.config[payload.id] = payload;
+			this.activeInstances.add(payload.id);
 			this.setConfig(payload.id);
 			this.extraRoutes(payload.id);
+			this.registerApiRoutes();
 			this.sendSocketNotification("READY", payload.id);
 			this.sendSocketNotification("SERVER_IP", { id: payload.id, ip: this.getLocalIp() });
+		}
+		if (notification === "CURRENT_PHOTO" && payload && payload.id) {
+			this.currentDisplayed[payload.id] = {
+				path: payload.path || null,
+				url: payload.url || null,
+				companionPath: payload.companionPath || null,
+				effect: payload.effect || null,
+				updatedAt: Date.now()
+			};
+			if (typeof payload.paused === "boolean") {
+				this.pausedState = payload.paused;
+			}
 		}
 		if (notification === "GET_METADATA") {
 			const { id, photo } = payload;
@@ -300,27 +434,40 @@ module.exports = NodeHelper.create({
 				...photo,
 				exif: null,
 				location: null,
-				face: null
+				face: null,
+				memoryYearsAgo: 0
 			};
 
 			const mediaType = mime.lookup(imagePath);
 			const isVideo = mediaType && mediaType.startsWith("video/");
 
 			try {
-				// Process EXIF and GPS only for images.
 				if (!isVideo && this.config[id].showExif) {
 					if (mediaType === "image/jpeg" || mediaType === "image/jpg" || mediaType === "image/tiff") {
 						try {
 							const fileBuffer = fs.readFileSync(imagePath);
 							const parser = exifParser.create(fileBuffer);
 							photoObject.exif = parser.parse();
+
+							if (photoObject.exif && photoObject.exif.tags && typeof photoObject.exif.tags.DateTimeOriginal === "number") {
+								const dt = new Date(photoObject.exif.tags.DateTimeOriginal * 1000);
+								const year = dt.getUTCFullYear();
+								const month = dt.getUTCMonth() + 1;
+								const day = dt.getUTCDate();
+								photoObject.memoryYearsAgo = computeMemoryYearsAgo(year, month, day);
+
+								try {
+									const st = fs.statSync(imagePath);
+									this.dateCache[photo.path] = { mtimeMs: st.mtimeMs, size: st.size, year, month, day };
+									this.scheduleSaveDateCache();
+								} catch (_) {
+									// ignore
+								}
+							}
 						} catch (error) {
 							console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
 						}
 					} else {
-						if (this.config[id].debugToConsole) {
-							console.log(`[MMM-ImagesPhotos] Skipping EXIF parse for unsupported mime type: ${mediaType} (${photo.path})`);
-						}
 						photoObject.exif = null;
 					}
 
@@ -349,7 +496,6 @@ module.exports = NodeHelper.create({
 					}
 				}
 
-				// Process face detection only for images
 				if (!isVideo && this.config[id].faceDetection) {
 					photoObject.face = await this.runFaceDetection(imagePath, id);
 				}
@@ -379,10 +525,24 @@ module.exports = NodeHelper.create({
 		const imgs = this.getImages(this.getFiles(directoryImages, id), id);
 		console.log(`[MMM-ImagesPhotos] Loaded ${imgs.length} media files (${id})`);
 
-		const initialPhotos = imgs.map((img) => ({
-			url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
-			path: img
-		}));
+		const initialPhotos = imgs.map((img) => {
+			const entry = {
+				url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
+				path: img
+			};
+			const fc = this.faceCache[img];
+			if (fc && fc.face && fc.face.width && fc.face.height) {
+				entry.isPortrait = fc.face.height > fc.face.width;
+			}
+			const dc = this.dateCache[img];
+			if (dc && dc.year && dc.month && dc.day) {
+				const yearsAgo = computeMemoryYearsAgo(dc.year, dc.month, dc.day);
+				if (yearsAgo >= 1) {
+					entry.memoryYearsAgo = yearsAgo;
+				}
+			}
+			return entry;
+		});
 		res.send(initialPhotos);
 	},
 
@@ -409,12 +569,10 @@ module.exports = NodeHelper.create({
 		try {
 			files = fs.readdirSync(filePath).filter((file) => {
 				if (fs.statSync(`${filePath}/${file}`).isDirectory()) {
-					// !로 시작하는 폴더는 매직미러 화면에 표시하지 않음 (숨김 처리)
 					if (!file.startsWith("!")) {
 						folders.push(`${filePath}/${file}`);
 					}
 				} else if (!file.startsWith(".") && !file.startsWith("!")) {
-					// !로 시작하는 파일도 매직미러 화면에 표시하지 않음 (숨김 처리)
 					return file;
 				}
 			});
