@@ -276,12 +276,6 @@ Module.register(ourModuleName, {
       el.className = "mmip-spotlight-pill mmip-spot-week";
       el.textContent = `🌸 ${photoImage.nearMemoryYearsAgo}년 전 이맘때`;
       container.appendChild(el);
-    } else if (photoImage.isSameSeason) {
-      const s = this.getCurrentSeasonMeta();
-      const el = document.createElement("div");
-      el.className = `mmip-spotlight-pill ${s.cls}`;
-      el.textContent = `${s.icon} ${s.label}`;
-      container.appendChild(el);
     }
 
     if (photoImage.isFavorite) {
@@ -437,14 +431,13 @@ Module.register(ourModuleName, {
 
     const seasonalMultiplier = Math.max(1, Math.round(Number(this.config.seasonalWeight) || 3));
 
-    // Apply weights cleanly without over-stacking (seasonal/anniversary = 3x, favorite = +1)
+    // Apply weights cleanly without over-stacking (today/±7-day memory = 3x, favorite = +1)
     filteredPhotos.forEach((p) => {
-      const isMemoryOrSeason = Boolean(
+      const isMemoryPhoto = Boolean(
         (p.memoryYearsAgo && p.memoryYearsAgo >= 1) ||
-        (p.nearMemoryYearsAgo && p.nearMemoryYearsAgo >= 1) ||
-        p.isSameSeason
+        (p.nearMemoryYearsAgo && p.nearMemoryYearsAgo >= 1)
       );
-      let extraCopies = isMemoryOrSeason ? seasonalMultiplier - 1 : 0;
+      let extraCopies = isMemoryPhoto ? seasonalMultiplier - 1 : 0;
       if (p.isFavorite === true) {
         extraCopies += 1;
       }
