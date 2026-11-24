@@ -27,6 +27,7 @@ Module.register(ourModuleName, {
     videoPlaybackMultiplier: 1.2,
     transitionMode: "black", // "black" | "crossfade"
     enablePortraitCollage: true,
+    collageProbability: 0.5,
     imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
@@ -311,6 +312,8 @@ Module.register(ourModuleName, {
   pickCollageCompanion(primaryPhoto) {
     if (!this.config.enablePortraitCollage || !this.fullscreen) return null;
     if (!primaryPhoto || this.isVideo(primaryPhoto)) return null;
+    const prob = typeof this.config.collageProbability === "number" ? this.config.collageProbability : 0.5;
+    if (Math.random() >= prob) return null;
 
     const isScreenPortrait = window.innerHeight > window.innerWidth;
     const isPrimaryPortrait = this.isPhotoPortrait(primaryPhoto);
