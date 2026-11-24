@@ -378,7 +378,7 @@ module.exports = NodeHelper.create({
 
 	getImages(files) {
 		const images = [];
-		const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/heic", "video/mp4", "video/webm", "video/ogg", "video/mov"];
+		const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "video/mp4", "video/webm", "video/ogg", "video/quicktime"];
 
 		for (const idx in files) {
 			if (idx in files) {
