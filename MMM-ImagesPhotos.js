@@ -233,22 +233,55 @@ Module.register(ourModuleName, {
     this.triggerDomUpdate();
   },
 
+  getCurrentSeasonMeta() {
+    const m = new Date().getMonth() + 1;
+    if (m >= 3 && m <= 5) return { icon: "🌸", label: "봄의 추억", cls: "mmip-spot-spring" };
+    if (m >= 6 && m <= 8) return { icon: "☀️", label: "여름의 추억", cls: "mmip-spot-summer" };
+    if (m >= 9 && m <= 11) return { icon: "🍂", label: "가을의 추억", cls: "mmip-spot-autumn" };
+    return { icon: "❄️", label: "겨울의 추억", cls: "mmip-spot-winter" };
+  },
+
+  createSpotlightBadges(photoImage) {
+    if (!photoImage) return null;
+    const container = document.createElement("div");
+    container.className = "mmip-spotlight-row";
+
+    if (photoImage.memoryYearsAgo && photoImage.memoryYearsAgo >= 1) {
+      const el = document.createElement("div");
+      el.className = "mmip-spotlight-pill mmip-spot-today";
+      el.textContent = `🎂 ${photoImage.memoryYearsAgo}년 전 오늘`;
+      container.appendChild(el);
+    } else if (photoImage.nearMemoryYearsAgo && photoImage.nearMemoryYearsAgo >= 1) {
+      const el = document.createElement("div");
+      el.className = "mmip-spotlight-pill mmip-spot-week";
+      el.textContent = `🌸 ${photoImage.nearMemoryYearsAgo}년 전 이맘때`;
+      container.appendChild(el);
+    } else if (photoImage.isSameSeason) {
+      const s = this.getCurrentSeasonMeta();
+      const el = document.createElement("div");
+      el.className = `mmip-spotlight-pill ${s.cls}`;
+      el.textContent = `${s.icon} ${s.label}`;
+      container.appendChild(el);
+    }
+
+    if (photoImage.isFavorite) {
+      const fav = document.createElement("div");
+      fav.className = "mmip-spotlight-pill mmip-spot-fav";
+      fav.textContent = "⭐ 즐겨찾기";
+      container.appendChild(fav);
+    }
+
+    return container.childNodes.length > 0 ? container : null;
+  },
+
   updateFavoriteBadgeDom() {
     if (!this.fg || !this.currentPhoto) return;
-    const exifBox = this.fg.querySelector(".exif-info");
-    if (!exifBox) return;
-    const existing = exifBox.querySelector(".mmip-fav-badge");
-    if (this.currentPhoto.isFavorite && !existing) {
-      const badge = document.createElement("span");
-      badge.className = "mmip-fav-badge";
-      badge.textContent = "⭐ 즐겨찾기";
-      exifBox.prepend(document.createElement("br"));
-      exifBox.prepend(badge);
-    } else if (!this.currentPhoto.isFavorite && existing) {
-      const nextEl = existing.nextSibling;
-      existing.remove();
-      if (nextEl && nextEl.nodeName === "BR") nextEl.remove();
-    }
+    const stack = this.fg.querySelector(".mmip-meta-stack");
+    if (!stack) return;
+    const oldRow = stack.querySelector(".mmip-spotlight-row");
+    if (oldRow) oldRow.remove();
+    const newRow = this.createSpotlightBadges(this.currentPhoto);
+    if (newRow) stack.prepend(newRow);
   },
 
   applyDisplayState(state) {
@@ -899,19 +932,18 @@ Module.register(ourModuleName, {
   createExifWrapper(photoImage) {
     if (!this.config.showExif || !photoImage) return null;
 
+    const stack = document.createElement("div");
+    stack.className = "mmip-meta-stack";
+
+    const spotlight = this.createSpotlightBadges(photoImage);
+    if (spotlight) {
+      stack.appendChild(spotlight);
+    }
+
     const exifWrapper = document.createElement("div");
     exifWrapper.className = "exif-info";
     const infoParts = [];
     const tags = photoImage.exif && photoImage.exif.tags ? photoImage.exif.tags : null;
-
-    if (photoImage.isFavorite) {
-      infoParts.push(`<span class="mmip-fav-badge">⭐ 즐겨찾기</span>`);
-    }
-    if (photoImage.memoryYearsAgo && photoImage.memoryYearsAgo >= 1) {
-      infoParts.push(`<span class="mmip-memory-badge">🎂 ${photoImage.memoryYearsAgo}년 전 오늘</span>`);
-    } else if (photoImage.nearMemoryYearsAgo && photoImage.nearMemoryYearsAgo >= 1) {
-      infoParts.push(`<span class="mmip-season-badge">🌸 ${photoImage.nearMemoryYearsAgo}년 전 이맘때</span>`);
-    }
 
     if (tags) {
       const timestamp = tags.DateTimeOriginal;
@@ -955,9 +987,9 @@ Module.register(ourModuleName, {
 
     if (infoParts.length > 0) {
       exifWrapper.innerHTML = infoParts.join("<br>");
-      return exifWrapper;
+      stack.appendChild(exifWrapper);
     }
-    return null;
+    return stack.childNodes.length > 0 ? stack : null;
   },
 
   getDomnotFS() {

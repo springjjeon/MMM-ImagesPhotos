@@ -261,11 +261,85 @@
   100% { transform: scale(var(--base-scale)); }
 }
 
-/* Metadata & Badges - Glassmorphism for High Contrast */
-.exif-info {
+/* Metadata & Prominent Spotlight Stack */
+.mmip-meta-stack {
   position: absolute;
   bottom: 16px;
   right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  z-index: 6;
+}
+
+.mmip-spotlight-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mmip-spotlight-pill {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  padding: 8px 18px;
+  border-radius: 999px;
+  color: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: mmip-spot-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mmip-spot-today {
+  font-size: 26px;
+  background: linear-gradient(135deg, rgba(255, 149, 0, 0.95), rgba(255, 59, 92, 0.95));
+  box-shadow: 0 6px 24px rgba(255, 94, 98, 0.55);
+}
+
+.mmip-spot-week {
+  background: linear-gradient(135deg, rgba(132, 94, 247, 0.94), rgba(240, 101, 149, 0.94));
+  box-shadow: 0 6px 22px rgba(176, 98, 220, 0.48);
+}
+
+.mmip-spot-fav {
+  font-size: 22px;
+  background: linear-gradient(135deg, rgba(255, 204, 0, 0.96), rgba(255, 136, 0, 0.96));
+  color: #1a1200;
+  text-shadow: none;
+  box-shadow: 0 6px 20px rgba(255, 180, 0, 0.45);
+}
+
+.mmip-spot-spring {
+  font-size: 21px;
+  background: linear-gradient(135deg, rgba(240, 101, 149, 0.9), rgba(255, 168, 168, 0.9));
+}
+
+.mmip-spot-summer {
+  font-size: 21px;
+  background: linear-gradient(135deg, rgba(21, 170, 191, 0.92), rgba(51, 154, 240, 0.92));
+}
+
+.mmip-spot-autumn {
+  font-size: 21px;
+  background: linear-gradient(135deg, rgba(232, 89, 12, 0.92), rgba(245, 159, 0, 0.92));
+}
+
+.mmip-spot-winter {
+  font-size: 21px;
+  background: linear-gradient(135deg, rgba(59, 91, 219, 0.92), rgba(77, 171, 247, 0.92));
+}
+
+@keyframes mmip-spot-pop {
+  0% { opacity: 0; transform: translateY(10px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.exif-info {
   color: #ffffff;
   background-color: rgba(0, 0, 0, 0.52);
   backdrop-filter: blur(8px);
@@ -273,7 +347,6 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   padding: 10px 14px;
   border-radius: 14px;
-  z-index: 6;
   text-align: left;
   line-height: 1.45;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
@@ -371,6 +444,7 @@
 body.mmip-gallery-mode .region.top,
 body.mmip-gallery-mode .region.bottom,
 body.mmip-gallery-mode .region.middle,
+body.mmip-gallery-mode .mmip-meta-stack,
 body.mmip-gallery-mode .exif-info,
 body.mmip-gallery-mode .mmip-qr-code,
 body.mmip-gallery-mode .mmip-collage-caption {
