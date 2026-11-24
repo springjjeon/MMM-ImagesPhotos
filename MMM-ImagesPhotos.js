@@ -155,6 +155,9 @@ Module.register(ourModuleName, {
     if (notification === "REMOTE_CONTROL" && payload.id === this.identifier) {
       this.handleRemoteControl(payload.action);
     }
+    if (notification === "BRIGHTNESS_UPDATED" && payload.id === this.identifier) {
+      this.applyDimOverlay(payload.brightness);
+    }
     if (notification === "FAVORITE_UPDATED" && payload.id === this.identifier) {
       if (this.currentPhoto && this.currentPhoto.path === payload.path) {
         this.currentPhoto.isFavorite = payload.isFavorite;
@@ -239,6 +242,26 @@ Module.register(ourModuleName, {
       existing.remove();
       if (nextEl && nextEl.nodeName === "BR") nextEl.remove();
     }
+  },
+
+  applyDimOverlay(brightnessPercent) {
+    if (typeof document === "undefined" || !document.body) return;
+    const pct = Math.max(15, Math.min(100, Number(brightnessPercent) || 100));
+    let overlay = document.getElementById("mmip-dim-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "mmip-dim-overlay";
+      overlay.style.position = "fixed";
+      overlay.style.inset = "0";
+      overlay.style.backgroundColor = "#000";
+      overlay.style.pointerEvents = "none";
+      overlay.style.zIndex = "99999";
+      overlay.style.transition = "opacity 0.45s ease";
+      overlay.style.opacity = "0";
+      document.body.appendChild(overlay);
+    }
+    const dimOpacity = Math.max(0, Math.min(0.85, (100 - pct) / 100));
+    overlay.style.opacity = dimOpacity.toFixed(2);
   },
 
   updatePauseBadge() {

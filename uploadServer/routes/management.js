@@ -41,19 +41,41 @@ function readScreenStatus(callback) {
 	});
 }
 
+const BRIGHTNESS_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "brightness.json");
+
+function readBrightnessSync() {
+	try {
+		if (fs.existsSync(BRIGHTNESS_CACHE_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(BRIGHTNESS_CACHE_FILE, "utf8"));
+			if (parsed && typeof parsed.brightness === "number") {
+				return Math.max(15, Math.min(100, Math.round(parsed.brightness)));
+			}
+		}
+	} catch (_) {}
+	return 100;
+}
+
+function saveBrightnessSync(val) {
+	const dir = path.dirname(BRIGHTNESS_CACHE_FILE);
+	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	const tmp = `${BRIGHTNESS_CACHE_FILE}.tmp`;
+	fs.writeFileSync(tmp, JSON.stringify({ brightness: val, updatedAt: Date.now() }), "utf8");
+	fs.renameSync(tmp, BRIGHTNESS_CACHE_FILE);
+}
+
 function readBrightness(callback) {
-	execFile("ddcutil", ["getvcp", "10"], { timeout: 5000 }, (err, stdout) => {
-		if (err || !stdout) return callback(null);
-		const match = stdout.match(/current value\s*=\s*(\d+)/i);
-		callback(match ? Number(match[1]) : null);
-	});
+	callback(readBrightnessSync());
 }
 
 function setBrightness(value, callback) {
-	const clamped = Math.max(10, Math.min(100, Math.round(Number(value))));
+	const clamped = Math.max(15, Math.min(100, Math.round(Number(value))));
 	if (Number.isNaN(clamped)) return callback(new Error("Invalid brightness value"));
-	execFile("ddcutil", ["setvcp", "10", String(clamped)], { timeout: 6000 }, (err) => {
-		if (err) return callback(err);
+	try {
+		saveBrightnessSync(clamped);
+	} catch (err) {
+		return callback(err);
+	}
+	callMagicMirrorApi("POST", "/brightness", { value: clamped }, () => {
 		callback(null, clamped);
 	});
 }
@@ -321,11 +343,7 @@ function createManagementRouter(uploadDir) {
 						}
 					};
 
-					if (screenStatus === "on") {
-						readBrightness(afterBrightness);
-					} else {
-						afterBrightness(null);
-					}
+					readBrightness(afterBrightness);
 				});
 			});
 		});

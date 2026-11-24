@@ -23,6 +23,7 @@ const GEOCODE_CACHE_FILE = path.join(CACHE_DIR, "geocode-cache.json");
 const DATE_CACHE_FILE = path.join(CACHE_DIR, "exif-date-cache.json");
 const DIM_CACHE_FILE = path.join(CACHE_DIR, "dimensions-cache.json");
 const FAVORITES_FILE = path.join(CACHE_DIR, "favorites.json");
+const BRIGHTNESS_FILE = path.join(CACHE_DIR, "brightness.json");
 const CACHE_SAVE_DEBOUNCE_MS = 3000;
 const FACE_SCRIPT_TIMEOUT_MS = 15000;
 const GEOCODE_TIMEOUT_MS = 10000;
@@ -105,6 +106,18 @@ function readImageMetaFast(filePath) {
 	return null;
 }
 
+function loadBrightnessValue() {
+	try {
+		if (fs.existsSync(BRIGHTNESS_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(BRIGHTNESS_FILE, "utf8"));
+			if (parsed && typeof parsed.brightness === "number") {
+				return Math.max(15, Math.min(100, Math.round(parsed.brightness)));
+			}
+		}
+	} catch (_) {}
+	return 100;
+}
+
 function loadFavoritesSet() {
 	try {
 		if (fs.existsSync(FAVORITES_FILE)) {
@@ -173,6 +186,7 @@ module.exports = NodeHelper.create({
 	dateCache: {},
 	dimCache: {},
 	favorites: new Set(),
+	brightness: 100,
 	faceCacheSaveTimer: null,
 	geocodeCacheSaveTimer: null,
 	dateCacheSaveTimer: null,
@@ -381,6 +395,7 @@ module.exports = NodeHelper.create({
 		this.dateCache = loadJsonCache(DATE_CACHE_FILE);
 		this.dimCache = loadJsonCache(DIM_CACHE_FILE);
 		this.favorites = loadFavoritesSet();
+		this.brightness = loadBrightnessValue();
 		this.activeInstances = new Set();
 		this.currentDisplayed = {};
 		this.pausedState = false;
@@ -419,6 +434,7 @@ module.exports = NodeHelper.create({
 				paused: this.pausedState,
 				currentPhoto,
 				favoriteCount: this.favorites.size,
+				brightness: this.brightness,
 				faceCacheCount: Object.keys(this.faceCache).length,
 				geocodeCacheCount: Object.keys(this.geocodeCache).length,
 				dateCacheCount: Object.keys(this.dateCache).length
@@ -479,6 +495,25 @@ module.exports = NodeHelper.create({
 			res.json({ ok: true, path: targetPath, isFavorite, favoriteCount: this.favorites.size });
 		});
 
+		this.expressApp.get("/MMM-ImagesPhotos/api/brightness", (req, res) => {
+			res.json({ ok: true, brightness: this.brightness });
+		});
+
+		this.expressApp.post("/MMM-ImagesPhotos/api/brightness", (req, res) => {
+			const raw = req.body && req.body.value;
+			const val = Math.max(15, Math.min(100, Math.round(Number(raw))));
+			if (Number.isNaN(val)) {
+				return res.status(400).json({ ok: false, error: "Invalid brightness value" });
+			}
+			this.brightness = val;
+			saveJsonCacheAtomic(BRIGHTNESS_FILE, { brightness: val, updatedAt: Date.now() });
+			Array.from(this.activeInstances).forEach((id) => {
+				this.sendSocketNotification("BRIGHTNESS_UPDATED", { id, brightness: val });
+			});
+			console.log(`[MMM-ImagesPhotos] Screen dim brightness set to ${val}%`);
+			res.json({ ok: true, brightness: val });
+		});
+
 		this.expressApp.post("/MMM-ImagesPhotos/api/hide-current", (req, res) => {
 			const instances = Array.from(this.activeInstances);
 			const primaryId = instances[0];
@@ -523,6 +558,7 @@ module.exports = NodeHelper.create({
 			this.registerApiRoutes();
 			this.sendSocketNotification("READY", payload.id);
 			this.sendSocketNotification("SERVER_IP", { id: payload.id, ip: this.getLocalIp() });
+			this.sendSocketNotification("BRIGHTNESS_UPDATED", { id: payload.id, brightness: this.brightness });
 		}
 		if (notification === "CURRENT_PHOTO" && payload && payload.id) {
 			this.currentDisplayed[payload.id] = {
