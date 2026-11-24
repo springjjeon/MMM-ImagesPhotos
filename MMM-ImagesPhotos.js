@@ -45,9 +45,9 @@ Module.register(ourModuleName, {
 
   transitionDefaults: {
     blackDuration: 1000,
-    fadeDuration: 1000,
+    fadeDuration: 2200,
     displayDuration: 5000,
-    easing: "ease-in-out"
+    easing: "cubic-bezier(0.4, 0, 0.2, 1)"
   },
 
   wrapper: null,
@@ -135,7 +135,7 @@ Module.register(ourModuleName, {
       }
       this.nextPhoto = payload.photo;
       if (!this.currentPhoto) {
-        this.updateDom(this.config.animationSpeed);
+        this.triggerDomUpdate();
       }
     }
     if (notification === "SERVER_IP" && payload.id === this.identifier) {
@@ -397,6 +397,11 @@ Module.register(ourModuleName, {
     }
   },
 
+  triggerDomUpdate() {
+    const speed = this.fullscreen && this.config.transitionMode === "crossfade" ? 0 : this.config.animationSpeed;
+    this.updateDom(speed);
+  },
+
   waitForNextPhotoAndUpdate(delayMs = 0) {
     const self = this;
     const checkInterval = 300;
@@ -406,9 +411,9 @@ Module.register(ourModuleName, {
     const attempt = () => {
       if (self.suspended || self.paused) return;
       if (self.nextPhoto) {
-        self.updateDom(self.config.animationSpeed);
+        self.triggerDomUpdate();
       } else if (elapsed >= maxWait) {
-        self.updateDom(self.config.animationSpeed);
+        self.triggerDomUpdate();
       } else {
         elapsed += checkInterval;
         self.timer = setTimeout(attempt, checkInterval);
@@ -600,18 +605,21 @@ Module.register(ourModuleName, {
 
     if (isCrossfade && fgContainer) {
       fgContainer.style.backgroundColor = avg || "black";
+      fgContainer.style.opacity = 0;
+      void fgContainer.offsetWidth;
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
 
-      // Smoothly crossfade new layer over previous layer
+      // Smoothly crossfade new layer over previous layer (zero black flash)
       self.scheduleFadeTimer(() => {
         fgContainer.style.opacity = 1;
-      }, 30);
+      }, 50);
 
       if (prevLayer) {
         self.scheduleFadeTimer(() => {
           while (prevLayer.firstChild) prevLayer.removeChild(prevLayer.firstChild);
+          prevLayer.style.transition = "none";
           prevLayer.style.opacity = 0;
-        }, fadeDuration + 200);
+        }, fadeDuration + 250);
       }
 
       self.waitForNextPhotoAndUpdate(fadeDuration + displayDuration);
@@ -649,7 +657,7 @@ Module.register(ourModuleName, {
   resume() {
     this.suspended = false;
     if (!this.paused) {
-      this.updateDom(this.config.animationSpeed);
+      this.triggerDomUpdate();
     }
   },
 
@@ -1057,7 +1065,7 @@ Module.register(ourModuleName, {
     this.photos = data;
     if (this.loaded === false) {
       if (this.suspended === false) {
-        this.updateDom(this.config.animationSpeed);
+        this.triggerDomUpdate();
       }
     }
     this.loaded = true;
