@@ -12,312 +12,424 @@ const NodeHelper = require("node_helper");
 const path = require("path");
 const fs = require("fs");
 const mime = require("mime-types");
-const getAverageColor = require('fast-average-color-node');
 const exifParser = require("exif-parser");
 const https = require("https");
 const { spawn } = require("child_process");
 const os = require("os");
 
+const CACHE_DIR = path.join(__dirname, ".cache");
+const FACE_CACHE_FILE = path.join(CACHE_DIR, "face-detection-cache.json");
+const GEOCODE_CACHE_FILE = path.join(CACHE_DIR, "geocode-cache.json");
+const CACHE_SAVE_DEBOUNCE_MS = 3000;
+const FACE_SCRIPT_TIMEOUT_MS = 15000;
+const GEOCODE_TIMEOUT_MS = 10000;
+
+function loadJsonCache(filePath) {
+	try {
+		if (fs.existsSync(filePath)) {
+			const raw = fs.readFileSync(filePath, "utf8");
+			const parsed = JSON.parse(raw);
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				return parsed;
+			}
+		}
+	} catch (err) {
+		console.warn(`[MMM-ImagesPhotos] Failed to load cache ${path.basename(filePath)}: ${err.message}`);
+	}
+	return {};
+}
+
+function saveJsonCacheAtomic(filePath, data) {
+	try {
+		if (!fs.existsSync(CACHE_DIR)) {
+			fs.mkdirSync(CACHE_DIR, { recursive: true });
+		}
+		const tmpPath = `${filePath}.tmp`;
+		fs.writeFileSync(tmpPath, JSON.stringify(data), "utf8");
+		fs.renameSync(tmpPath, filePath);
+	} catch (err) {
+		console.error(`[MMM-ImagesPhotos] Failed to save cache ${path.basename(filePath)}: ${err.message}`);
+	}
+}
+
 async function reverseGeocode(lat, lon, language) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: "nominatim.openstreetmap.org",
-      path: `/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=${language}`,
-      headers: {
-        "User-Agent": "MagicMirror/MMM-ImagesPhotos-Module"
-      }
-    };
+	return new Promise((resolve, reject) => {
+		const options = {
+			hostname: "nominatim.openstreetmap.org",
+			path: `/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=${language}`,
+			headers: {
+				"User-Agent": "MagicMirror/MMM-ImagesPhotos-Module"
+			}
+		};
 
-    const req = https.get(options, (res) => {
-      let data = "";
-      res.on("data", (chunk) => {
-        data += chunk;
-      });
-      res.on("end", () => {
-        try {
-          const jsonData = JSON.parse(data);
-          if (jsonData && jsonData.error) {
-            reject(new Error(jsonData.error));
-          } else {
-            resolve(jsonData);
-          }
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
+		const req = https.get(options, (res) => {
+			let data = "";
+			res.on("data", (chunk) => {
+				data += chunk;
+			});
+			res.on("end", () => {
+				try {
+					const jsonData = JSON.parse(data);
+					if (jsonData && jsonData.error) {
+						reject(new Error(jsonData.error));
+					} else {
+						resolve(jsonData);
+					}
+				} catch (e) {
+					reject(e);
+				}
+			});
+		});
 
-    req.on("error", (e) => {
-      reject(e);
-    });
-  });
+		req.setTimeout(GEOCODE_TIMEOUT_MS, () => {
+			req.destroy(new Error("Reverse geocode request timed out"));
+		});
+
+		req.on("error", (e) => {
+			reject(e);
+		});
+	});
 }
 
 module.exports = NodeHelper.create({
-  // Override start method.
-  config: {},
-  path_images: {},
+	config: {},
+	path_images: {},
+	faceCache: {},
+	geocodeCache: {},
+	faceCacheSaveTimer: null,
+	geocodeCacheSaveTimer: null,
 
-  getLocalIp() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      for (const iface of interfaces[name]) {
-        if (iface.family === "IPv4" && !iface.internal) {
-          return iface.address;
-        }
-      }
-    }
-    return "127.0.0.1";
-  },
+	getLocalIp() {
+		const interfaces = os.networkInterfaces();
+		for (const name of Object.keys(interfaces)) {
+			for (const iface of interfaces[name]) {
+				if (iface.family === "IPv4" && !iface.internal) {
+					return iface.address;
+				}
+			}
+		}
+		return "127.0.0.1";
+	},
 
-  buildLocationString(address, displayName) {
-    const locationParts = [];
-    const fields = ["road", "suburb", "village", "town", "city", "county", "state", "country"];
+	buildLocationString(address, displayName) {
+		const locationParts = [];
+		const fields = ["road", "suburb", "village", "town", "city", "county", "state", "country"];
 
-    fields.forEach((field) => {
-      if (address[field]) {
-        locationParts.push(address[field]);
-      }
-    });
+		fields.forEach((field) => {
+			if (address[field]) {
+				locationParts.push(address[field]);
+			}
+		});
 
-    if (locationParts.length > 0) {
-      return locationParts.join(", ");
-    }
+		if (locationParts.length > 0) {
+			return locationParts.join(", ");
+		}
 
-    return displayName;
-  },
+		return displayName;
+	},
 
-  async runFaceDetection(imagePath, id) {
-    return new Promise((resolve, reject) => {
-      if (!this.config[id].faceDetection || !this.config[id].faceDetectionScript) {
-        resolve(null);
-        return;
-      }
+	scheduleSaveFaceCache() {
+		if (this.faceCacheSaveTimer) {
+			clearTimeout(this.faceCacheSaveTimer);
+		}
+		this.faceCacheSaveTimer = setTimeout(() => {
+			this.faceCacheSaveTimer = null;
+			saveJsonCacheAtomic(FACE_CACHE_FILE, this.faceCache);
+		}, CACHE_SAVE_DEBOUNCE_MS);
+	},
 
-      console.log(`[MMM-ImagesPhotos] Running python script: ${this.config[id].faceDetectionScript}, File: ${imagePath}`);
-      const python = spawn("python", [this.config[id].faceDetectionScript, imagePath]);
-      let dataString = "";
-      let errorString = "";
+	scheduleSaveGeocodeCache() {
+		if (this.geocodeCacheSaveTimer) {
+			clearTimeout(this.geocodeCacheSaveTimer);
+		}
+		this.geocodeCacheSaveTimer = setTimeout(() => {
+			this.geocodeCacheSaveTimer = null;
+			saveJsonCacheAtomic(GEOCODE_CACHE_FILE, this.geocodeCache);
+		}, CACHE_SAVE_DEBOUNCE_MS);
+	},
 
-      python.stdout.on("data", (data) => {
-        dataString += data.toString();
-      });
+	flushCaches() {
+		if (this.faceCacheSaveTimer) {
+			clearTimeout(this.faceCacheSaveTimer);
+			this.faceCacheSaveTimer = null;
+			saveJsonCacheAtomic(FACE_CACHE_FILE, this.faceCache);
+		}
+		if (this.geocodeCacheSaveTimer) {
+			clearTimeout(this.geocodeCacheSaveTimer);
+			this.geocodeCacheSaveTimer = null;
+			saveJsonCacheAtomic(GEOCODE_CACHE_FILE, this.geocodeCache);
+		}
+	},
 
-      python.stderr.on("data", (data) => {
-        errorString += data.toString();
-      });
+	async runFaceDetection(imagePath, id) {
+		if (!this.config[id].faceDetection || !this.config[id].faceDetectionScript) {
+			return null;
+		}
 
-      python.on("close", (code) => {
-        if (code !== 0) {
-          console.error(`[MMM-ImagesPhotos] Face detection script for ${imagePath} exited with code ${code}: ${errorString}`);
-          resolve(null);
-        } else {
-          console.log(`[MMM-ImagesPhotos] Python script result for ${imagePath}: ${dataString}`);
-          try {
-            const faceData = JSON.parse(dataString);
-            console.log(`[MMM-ImagesPhotos] Face detection result for ${imagePath}:`, JSON.stringify(faceData));
-            resolve(faceData);
-          } catch (e) {
-            console.error(`[MMM-ImagesPhotos] Face detection - Invalid JSON from script for ${imagePath}: ${dataString}`);
-            resolve(null);
-          }
-        }
-      });
+		const cacheKey = this.path_images[id] ? path.relative(this.path_images[id], imagePath) : imagePath;
+		let fileStat = null;
+		try {
+			fileStat = fs.statSync(imagePath);
+			const cached = this.faceCache[cacheKey];
+			if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+				if (this.config[id].debugToConsole) {
+					console.log(`[MMM-ImagesPhotos] Face detection cache hit for ${cacheKey}`);
+				}
+				return cached.face;
+			}
+		} catch (err) {
+			console.error(`[MMM-ImagesPhotos] Could not stat ${imagePath}: ${err.message}`);
+			return null;
+		}
 
-      python.on("error", (err) => {
-        console.error(`[MMM-ImagesPhotos] Failed to start face detection script for ${imagePath}`, err);
-        resolve(null); // Resolve with null to avoid breaking Promise.all
-      });
-    });
-  },
+		return new Promise((resolve) => {
+			if (this.config[id].debugToConsole) {
+				console.log(`[MMM-ImagesPhotos] Running python script: ${this.config[id].faceDetectionScript}, File: ${imagePath}`);
+			}
 
-  
-  start() {
-    console.log(`Starting node helper for: ${this.name}`);
-  },
+			const python = spawn("python", [this.config[id].faceDetectionScript, imagePath]);
+			let dataString = "";
+			let errorString = "";
+			let settled = false;
 
-  setConfig(id) {
-    console.log(`setconfig path=${id}`);
-    this.path_images[id] = path.resolve(
-      global.root_path,
-      "modules/MMM-ImagesPhotos/uploads",
-      this.config[id].path
-    );
-    console.log(`path for : ${this.name} ${id}= ${this.path_images[id]}`);
-  },
+			const finish = (result) => {
+				if (!settled) {
+					settled = true;
+					clearTimeout(timer);
+					resolve(result);
+				}
+			};
 
-  // Override socketNotificationReceived method.
-  async socketNotificationReceived(notification, payload) {
-    if (notification === "CONFIG") {
-      console.log(`Config based debug=${payload.id}`);
-      this.config[payload.id] = payload;
-      this.setConfig(payload.id);
-      this.extraRoutes(payload.id);
-      this.sendSocketNotification("READY", payload.id);
-      this.sendSocketNotification("SERVER_IP", { id: payload.id, ip: this.getLocalIp() });
-    }
-    if (notification === "GET_METADATA") {
-      const { id, photo } = payload;
-      const directoryImages = this.path_images[id];
-      const imagePath = path.join(directoryImages, photo.path);
+			const timer = setTimeout(() => {
+				console.error(`[MMM-ImagesPhotos] Face detection timed out after ${FACE_SCRIPT_TIMEOUT_MS}ms for ${imagePath}`);
+				try {
+					python.kill("SIGKILL");
+				} catch (_) {
+					// ignore
+				}
+				finish(null);
+			}, FACE_SCRIPT_TIMEOUT_MS);
 
-      const photoObject = {
-        ...photo,
-        exif: null,
-        location: null,
-        face: null
-      };
+			python.stdout.on("data", (data) => {
+				dataString += data.toString();
+			});
 
-      const mediaType = mime.lookup(imagePath);
-      const isVideo = mediaType && mediaType.startsWith("video/");
+			python.stderr.on("data", (data) => {
+				errorString += data.toString();
+			});
 
-      try {
-        // Process EXIF and GPS only for images.
-        if (!isVideo && this.config[id].showExif) {
-          if (mediaType === "image/jpeg" || mediaType === "image/jpg" || mediaType === "image/tiff") {
-            try {
-              const fileBuffer = fs.readFileSync(imagePath);
-              const parser = exifParser.create(fileBuffer);
-              photoObject.exif = parser.parse();
-            } catch (error) {
-              console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
-            }
-          } else {
-            // PNG 등 EXIF 정보를 지원하지 않는 이미지 포맷은 스킵
-            if (this.config[id].debugToConsole) {
-              console.log(`[MMM-ImagesPhotos] Skipping EXIF parse for unsupported mime type: ${mediaType} (${photo.path})`);
-            }
-            photoObject.exif = null;
-          }
+			python.on("close", (code) => {
+				if (code !== 0) {
+					console.error(`[MMM-ImagesPhotos] Face detection script for ${imagePath} exited with code ${code}: ${errorString}`);
+					finish(null);
+					return;
+				}
+				try {
+					const faceData = JSON.parse(dataString);
+					if (fileStat) {
+						this.faceCache[cacheKey] = {
+							mtimeMs: fileStat.mtimeMs,
+							size: fileStat.size,
+							face: faceData
+						};
+						this.scheduleSaveFaceCache();
+					}
+					if (this.config[id].debugToConsole) {
+						console.log(`[MMM-ImagesPhotos] Face detection result for ${cacheKey}:`, JSON.stringify(faceData));
+					}
+					finish(faceData);
+				} catch (e) {
+					console.error(`[MMM-ImagesPhotos] Face detection - Invalid JSON from script for ${imagePath}: ${dataString}`);
+					finish(null);
+				}
+			});
 
-          if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
-            try {
-              const locationData = await reverseGeocode(photoObject.exif.tags.GPSLatitude, photoObject.exif.tags.GPSLongitude, this.config[id].language);
-              if (locationData && locationData.address) {
-                photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
-              }
-            } catch (e) {
-              console.error(`[MMM-ImagesPhotos] Could not reverse geocode for ${photo.path}:`, e.message);
-            }
-          }
-        }
+			python.on("error", (err) => {
+				console.error(`[MMM-ImagesPhotos] Failed to start face detection script for ${imagePath}`, err);
+				finish(null);
+			});
+		});
+	},
 
-        // Process face detection only for images
-        if (!isVideo && this.config[id].faceDetection) {
-          photoObject.face = await this.runFaceDetection(imagePath, id);
-        }
+	start() {
+		console.log(`Starting node helper for: ${this.name}`);
+		this.faceCache = loadJsonCache(FACE_CACHE_FILE);
+		this.geocodeCache = loadJsonCache(GEOCODE_CACHE_FILE);
+		console.log(
+			`[MMM-ImagesPhotos] Loaded cache: ${Object.keys(this.faceCache).length} face entries, ${Object.keys(this.geocodeCache).length} geocode entries`
+		);
+	},
 
-        this.sendSocketNotification("METADATA_RESPONSE", { id: id, photo: photoObject });
-      } catch (e) {
-        console.error(`[MMM-ImagesPhotos] Error processing metadata for ${photo.path}:`, e);
-      }
-    }
-  },
+	stop() {
+		this.flushCaches();
+	},
 
-  /*
-   * Create routes for module manager.
-   * Recive request and send response
-   */
-  extraRoutes(id) {
-    console.log(`setting path=${id}`);
-    const self = this;
+	setConfig(id) {
+		this.path_images[id] = path.resolve(
+			global.root_path,
+			"modules/MMM-ImagesPhotos/uploads",
+			this.config[id].path
+		);
+		console.log(`[MMM-ImagesPhotos] Media path (${id}): ${this.path_images[id]}`);
+	},
 
-    this.expressApp.get(`/MMM-ImagesPhotos/photos/${id}`, (req, res) => {
-      self.getPhotosImages(req, res, id);
-    });
+	async socketNotificationReceived(notification, payload) {
+		if (notification === "CONFIG") {
+			this.config[payload.id] = payload;
+			this.setConfig(payload.id);
+			this.extraRoutes(payload.id);
+			this.sendSocketNotification("READY", payload.id);
+			this.sendSocketNotification("SERVER_IP", { id: payload.id, ip: this.getLocalIp() });
+		}
+		if (notification === "GET_METADATA") {
+			const { id, photo } = payload;
+			const directoryImages = this.path_images[id];
+			const imagePath = path.join(directoryImages, photo.path);
 
-    this.expressApp.use(
-      `/MMM-ImagesPhotos/photo/${id}`,
-      express.static(self.path_images[id])
-    );
-  },
+			const photoObject = {
+				...photo,
+				exif: null,
+				location: null,
+				face: null
+			};
 
-  // Return photos-images by response in JSON format.
-  getPhotosImages(req, res, id) {
-    console.log(`gpi id=${id}`);
-    const directoryImages = this.path_images[id];
+			const mediaType = mime.lookup(imagePath);
+			const isVideo = mediaType && mediaType.startsWith("video/");
 
-    const imgs = this.getImages(this.getFiles(directoryImages, id), id);
-    
-    const initialPhotos = imgs.map((img) => ({
-      url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
-      path: img // Keep the relative path for requests
-    }));
-    res.send(initialPhotos);
-  },
+			try {
+				// Process EXIF and GPS only for images.
+				if (!isVideo && this.config[id].showExif) {
+					if (mediaType === "image/jpeg" || mediaType === "image/jpg" || mediaType === "image/tiff") {
+						try {
+							const fileBuffer = fs.readFileSync(imagePath);
+							const parser = exifParser.create(fileBuffer);
+							photoObject.exif = parser.parse();
+						} catch (error) {
+							console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
+						}
+					} else {
+						if (this.config[id].debugToConsole) {
+							console.log(`[MMM-ImagesPhotos] Skipping EXIF parse for unsupported mime type: ${mediaType} (${photo.path})`);
+						}
+						photoObject.exif = null;
+					}
 
-  // Return array with only images
-  getImages(files, id) {
-    console.log(`gp id=${id}`);
-    const images = [];
-    const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/heic", "video/mp4", "video/webm", "video/ogg", "video/mov"];
+					if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
+						const lat = Number(photoObject.exif.tags.GPSLatitude);
+						const lon = Number(photoObject.exif.tags.GPSLongitude);
+						const lang = this.config[id].language || "ko";
+						const geoKey = `${lat.toFixed(4)},${lon.toFixed(4)},${lang}`;
 
-    for (const idx in files) {
-      if (idx in files) {
-        const type = mime.lookup(files[idx]);
-        if (enabledTypes.indexOf(type) >= 0 && type !== false) {
-          images.push(files[idx]);
-        }
-      }
-    }
+						if (Object.prototype.hasOwnProperty.call(this.geocodeCache, geoKey)) {
+							photoObject.location = this.geocodeCache[geoKey];
+						} else {
+							try {
+								const locationData = await reverseGeocode(lat, lon, lang);
+								if (locationData && locationData.address) {
+									photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
+									if (photoObject.location) {
+										this.geocodeCache[geoKey] = photoObject.location;
+										this.scheduleSaveGeocodeCache();
+									}
+								}
+							} catch (e) {
+								console.error(`[MMM-ImagesPhotos] Could not reverse geocode for ${photo.path}:`, e.message);
+							}
+						}
+					}
+				}
 
-    return images;
-  },
+				// Process face detection only for images
+				if (!isVideo && this.config[id].faceDetection) {
+					photoObject.face = await this.runFaceDetection(imagePath, id);
+				}
 
-  getFiles(filePath, id) {
-    console.log(`gf id=${id}`);
-    let files = [];
-    const folders = [];
-    try {
-      // console.log("finding files on path="+path)
-      files = fs.readdirSync(filePath).filter((file) => {
-        console.log(`found file=${file} on path=${filePath}`);
-        if (fs.statSync(`${filePath}/${file}`).isDirectory()) {
-          // !로 시작하는 폴더는 매직미러 화면에 표시하지 않음 (숨김 처리)
-          if (!file.startsWith("!")) {
-            console.log(`${id} saving folder path=${filePath}/${file}`);
-            folders.push(`${filePath}/${file}`);
-          }
-        } else if (!file.startsWith(".") && !file.startsWith("!")) {
-          // !로 시작하는 파일도 매직미러 화면에 표시하지 않음 (숨김 처리)
-          return file;
-        }
-      });
+				this.sendSocketNotification("METADATA_RESPONSE", { id: id, photo: photoObject });
+			} catch (e) {
+				console.error(`[MMM-ImagesPhotos] Error processing metadata for ${photo.path}:`, e);
+			}
+		}
+	},
 
-      folders.forEach((x) => {
-        console.log(`${id} processing for sub folder=${x}`);
-        const y = this.getFiles(x, id);
-        // console.log("list"+JSON.stringify(y))
-        const worklist = [];
-        // Get the number of elements in the base path
-        const c = this.path_images[id].split("/").length;
-        // Get the rest of the path
-        const xpath = x.split("/").slice(c).join("/");
-        y.forEach((f) => {
-          // If the file doesn't have a path
-          if (f.includes("/")) {
-            // Use it as is
+	extraRoutes(id) {
+		const self = this;
 
-            worklist.push(f);
-          } else {
-            // Add it
+		this.expressApp.get(`/MMM-ImagesPhotos/photos/${id}`, (req, res) => {
+			self.getPhotosImages(req, res, id);
+		});
 
-            worklist.push(`${xpath}/${f}`);
-          }
-        });
-        // Add to the files list
-        files = files.concat(worklist);
-        console.log(`files after concat=${JSON.stringify(files)}`);
-      });
-    } catch (exception) {
-      console.log(
-        `getfiles unable to access source folder,path=${filePath} will retry, exception=${JSON.stringify(
-          exception
-        )}`
-      );
-    }
-    console.log(`${id} returning files=${JSON.stringify(files)}`);
+		this.expressApp.use(
+			`/MMM-ImagesPhotos/photo/${id}`,
+			express.static(self.path_images[id])
+		);
+	},
 
-    return files;
-  }
+	getPhotosImages(req, res, id) {
+		const directoryImages = this.path_images[id];
+		const imgs = this.getImages(this.getFiles(directoryImages, id), id);
+		console.log(`[MMM-ImagesPhotos] Loaded ${imgs.length} media files (${id})`);
+
+		const initialPhotos = imgs.map((img) => ({
+			url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
+			path: img
+		}));
+		res.send(initialPhotos);
+	},
+
+	getImages(files) {
+		const images = [];
+		const enabledTypes = ["image/jpeg", "image/png", "image/gif", "image/heic", "video/mp4", "video/webm", "video/ogg", "video/mov"];
+
+		for (const idx in files) {
+			if (idx in files) {
+				const type = mime.lookup(files[idx]);
+				if (enabledTypes.indexOf(type) >= 0 && type !== false) {
+					images.push(files[idx]);
+				}
+			}
+		}
+
+		return images;
+	},
+
+	getFiles(filePath, id) {
+		const debug = this.config[id] && this.config[id].debugToConsole;
+		let files = [];
+		const folders = [];
+		try {
+			files = fs.readdirSync(filePath).filter((file) => {
+				if (fs.statSync(`${filePath}/${file}`).isDirectory()) {
+					// !로 시작하는 폴더는 매직미러 화면에 표시하지 않음 (숨김 처리)
+					if (!file.startsWith("!")) {
+						folders.push(`${filePath}/${file}`);
+					}
+				} else if (!file.startsWith(".") && !file.startsWith("!")) {
+					// !로 시작하는 파일도 매직미러 화면에 표시하지 않음 (숨김 처리)
+					return file;
+				}
+			});
+
+			folders.forEach((x) => {
+				const y = this.getFiles(x, id);
+				const worklist = [];
+				const c = this.path_images[id].split("/").length;
+				const xpath = x.split("/").slice(c).join("/");
+				y.forEach((f) => {
+					if (f.includes("/")) {
+						worklist.push(f);
+					} else {
+						worklist.push(`${xpath}/${f}`);
+					}
+				});
+				files = files.concat(worklist);
+			});
+		} catch (exception) {
+			console.error(`[MMM-ImagesPhotos] Unable to access source folder ${filePath}: ${exception.message}`);
+		}
+		if (debug) {
+			console.log(`[MMM-ImagesPhotos] Found ${files.length} files in ${filePath}`);
+		}
+
+		return files;
+	}
 });

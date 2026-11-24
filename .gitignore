@@ -2,3 +2,6 @@ node_modules
 uploads
 npm-debug.log
 package-lock.json
+.cache
+.temp-uploads
+__pycache__
