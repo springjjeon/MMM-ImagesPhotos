@@ -29,7 +29,7 @@ Module.register(ourModuleName, {
     enablePortraitCollage: true,
     collageProbability: 0.5,
     stillProbability: 0.25,
-    seasonalWeight: 5,
+    seasonalWeight: 3,
     imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
@@ -435,9 +435,9 @@ Module.register(ourModuleName, {
   buildPhotoDeck(filteredPhotos) {
     const deck = filteredPhotos.slice();
 
-    const seasonalMultiplier = Math.max(1, Math.round(Number(this.config.seasonalWeight) || 5));
+    const seasonalMultiplier = Math.max(1, Math.round(Number(this.config.seasonalWeight) || 3));
 
-    // Apply weights cleanly without over-stacking (seasonal/anniversary = 5x, favorite = +1)
+    // Apply weights cleanly without over-stacking (seasonal/anniversary = 3x, favorite = +1)
     filteredPhotos.forEach((p) => {
       const isMemoryOrSeason = Boolean(
         (p.memoryYearsAgo && p.memoryYearsAgo >= 1) ||
