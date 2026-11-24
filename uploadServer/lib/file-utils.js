@@ -1,322 +1,336 @@
+const fs = require("fs");
+const path = require("path");
+const fsAsync = require("fs").promises;
+const exifParser = require("exif-parser");
 
-const fs = require('fs');
-const path = require('path');
-const fsAsync = require('fs').promises;
+const CACHE_DIR = path.join(__dirname, "..", "..", ".cache");
+const DATE_CACHE_FILE = path.join(CACHE_DIR, "exif-date-cache.json");
+const FAVORITES_FILE = path.join(CACHE_DIR, "favorites.json");
+
+function loadDateCache() {
+	try {
+		if (fs.existsSync(DATE_CACHE_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(DATE_CACHE_FILE, "utf8"));
+			if (parsed && typeof parsed === "object") return parsed;
+		}
+	} catch (_) {}
+	return {};
+}
+
+function loadFavorites() {
+	try {
+		if (fs.existsSync(FAVORITES_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(FAVORITES_FILE, "utf8"));
+			if (Array.isArray(parsed)) return new Set(parsed);
+		}
+	} catch (_) {}
+	return new Set();
+}
+
+function saveFavorites(favSet) {
+	try {
+		if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+		const tmp = `${FAVORITES_FILE}.tmp`;
+		fs.writeFileSync(tmp, JSON.stringify(Array.from(favSet)), "utf8");
+		fs.renameSync(tmp, FAVORITES_FILE);
+	} catch (err) {
+		console.error("[file-utils] Failed to save favorites:", err.message);
+	}
+}
+
+function toggleFavoritePath(relPath) {
+	const favs = loadFavorites();
+	let isFavorite;
+	if (favs.has(relPath)) {
+		favs.delete(relPath);
+		isFavorite = false;
+	} else {
+		favs.add(relPath);
+		isFavorite = true;
+	}
+	saveFavorites(favs);
+	return { isFavorite, favoriteCount: favs.size };
+}
+
+function readExifTimestampFast(filePath) {
+	try {
+		const ext = path.extname(filePath).toLowerCase();
+		if (ext !== ".jpg" && ext !== ".jpeg") return null;
+		const fd = fs.openSync(filePath, "r");
+		const buf = Buffer.alloc(65536);
+		fs.readSync(fd, buf, 0, 65536, 0);
+		fs.closeSync(fd);
+		const parsed = exifParser.create(buf).parse();
+		if (parsed && parsed.tags && typeof parsed.tags.DateTimeOriginal === "number") {
+			const dt = new Date(parsed.tags.DateTimeOriginal * 1000);
+			return {
+				takenAt: parsed.tags.DateTimeOriginal * 1000,
+				dateLabel: `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`
+			};
+		}
+	} catch (_) {}
+	return null;
+}
 
 // --- Directory Operations ---
 
-/**
- * Gets subdirectories of a given directory (non-recursive).
- * @param {string} dirPath - The full path to the directory.
- * @returns {Promise<object[]>} - A promise resolving to an array of directory info objects {name, isHidden}.
- */
 async function getSubdirectories(dirPath) {
-    try {
-        const items = await fsAsync.readdir(dirPath, { withFileTypes: true });
-        return items
-            .filter(item => item.isDirectory())
-            .map(item => ({
-                name: item.name,
-                isHidden: item.name.startsWith('!'),
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically
-    } catch (error) {
-        // If directory doesn't exist or other error, return empty array
-        console.error(`Error reading subdirectories for ${dirPath}:`, error.message);
-        return [];
-    }
+	try {
+		const items = await fsAsync.readdir(dirPath, { withFileTypes: true });
+		return items
+			.filter((item) => item.isDirectory())
+			.map((item) => ({
+				name: item.name,
+				isHidden: item.name.startsWith("!")
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
+	} catch (error) {
+		console.error(`Error reading subdirectories for ${dirPath}:`, error.message);
+		return [];
+	}
 }
 
-/**
- * Recursively gets all directory paths within a given directory asynchronously.
- * @param {string} dir - The directory to start from.
- * @param {string} [relativePath=''] - The relative path for recursion.
- * @returns {Promise<string[]>} - A promise that resolves to an array of directory paths.
- */
-async function getDirectories(dir, relativePath = '') {
-    let results = [];
-    try {
-        await fsAsync.access(dir);
-    } catch (e) {
-        return results; // Directory doesn't exist or is not accessible
-    }
-
-    const items = await fsAsync.readdir(dir, { withFileTypes: true });
-    for (const item of items) {
-        if (item.isDirectory()) {
-            const itemRelativePath = path.join(relativePath, item.name);
-            results.push(itemRelativePath);
-            const subResults = await getDirectories(path.join(dir, item.name), itemRelativePath);
-            results = results.concat(subResults);
-        }
-    }
-    return results;
+async function getDirectories(dirPath, baseDir = dirPath) {
+	let directories = [];
+	try {
+		const items = await fsAsync.readdir(dirPath, { withFileTypes: true });
+		for (const item of items) {
+			if (item.isDirectory()) {
+				const fullPath = path.join(dirPath, item.name);
+				const relativePath = path.relative(baseDir, fullPath);
+				directories.push(relativePath);
+				const subDirs = await getDirectories(fullPath, baseDir);
+				directories = directories.concat(subDirs);
+			}
+		}
+	} catch (error) {
+		console.error(`Error reading directories for ${dirPath}:`, error.message);
+	}
+	return directories;
 }
 
-/**
- * Toggles the visibility of a folder by adding/removing a '!' prefix.
- * @param {string} uploadDir - The base uploads directory.
- * @param {string} folderName - The relative path of the folder to toggle.
- */
 function toggleFolderVisibility(uploadDir, folderName) {
-    if (!folderName) return;
+	if (!folderName) return;
+	const oldPath = path.join(uploadDir, folderName);
+	if (!fs.existsSync(oldPath)) return;
 
-    let oldPath = path.join(uploadDir, folderName);
-    if (!fs.existsSync(oldPath)) return;
+	const parentDir = path.dirname(oldPath);
+	const baseName = path.basename(oldPath);
+	const newBaseName = baseName.startsWith("!") ? baseName.substring(1) : `!${baseName}`;
+	const newPath = path.join(parentDir, newBaseName);
 
-    const parentDir = path.dirname(oldPath);
-    const baseName = path.basename(oldPath);
-    const isMakingVisible = baseName.startsWith('!');
-
-    // If making a folder visible, ensure all its parent folders are also made visible.
-    if (isMakingVisible) {
-        let currentParent = parentDir;
-        while (currentParent.startsWith(uploadDir) && currentParent !== uploadDir) {
-            const parentBaseName = path.basename(currentParent);
-            if (parentBaseName.startsWith('!')) {
-                const newParentPath = path.join(path.dirname(currentParent), parentBaseName.substring(1));
-                try {
-                    fs.renameSync(currentParent, newParentPath);
-                } catch (e) {
-                    console.error(`Failed to make parent folder visible: ${currentParent}`, e);
-                }
-                currentParent = path.dirname(newParentPath);
-            } else {
-                currentParent = path.dirname(currentParent);
-            }
-        }
-    } else {
-        // If hiding a folder, hide all its subfolders as well.
-        renameAllDirectories(oldPath, false); // Hide all children
-    }
-    
-    const newBaseName = isMakingVisible ? baseName.substring(1) : `!${baseName}`;
-    const newPath = path.join(parentDir, newBaseName);
-
-    try {
-        fs.renameSync(oldPath, newPath);
-    } catch (e) {
-        console.error(`Failed to rename folder: ${oldPath}`, e);
-    }
+	try {
+		fs.renameSync(oldPath, newPath);
+	} catch (e) {
+		console.error(`Failed to rename folder: ${oldPath}`, e);
+	}
 }
 
-
-/**
- * Recursively renames all directories to be shown or hidden.
- * @param {string} dirPath - The starting directory path.
- * @param {boolean} showAll - True to show all (remove '!'), false to hide all (add '!').
- */
 function renameAllDirectories(dirPath, showAll) {
-    if (!fs.existsSync(dirPath)) return;
-    const items = fs.readdirSync(dirPath);
-    for (const item of items) {
-        const fullPath = path.join(dirPath, item);
-        try {
-            if (fs.statSync(fullPath).isDirectory()) {
-                renameAllDirectories(fullPath, showAll); // Recurse first
-                
-                const isHidden = item.startsWith('!');
-                let newItem = item;
-                if (showAll && isHidden) {
-                    newItem = item.substring(1);
-                } else if (!showAll && !isHidden) {
-                    newItem = '!' + item;
-                }
-                
-                if (newItem !== item) {
-                    fs.renameSync(fullPath, path.join(dirPath, newItem));
-                }
-            }
-        } catch (e) {
-             console.error(`Failed to process directory ${fullPath}:`, e);
-        }
-    }
+	if (!fs.existsSync(dirPath)) return;
+	const items = fs.readdirSync(dirPath, { withFileTypes: true });
+
+	items.forEach((item) => {
+		if (item.isDirectory()) {
+			const oldPath = path.join(dirPath, item.name);
+			let newName = item.name;
+			const isHidden = item.name.startsWith("!");
+
+			if (showAll && isHidden) {
+				newName = item.name.substring(1);
+			} else if (!showAll && !isHidden) {
+				newName = `!${item.name}`;
+			}
+
+			const newPath = path.join(dirPath, newName);
+			if (oldPath !== newPath) {
+				try {
+					fs.renameSync(oldPath, newPath);
+				} catch (e) {
+					console.error(`Failed to rename directory ${oldPath}:`, e);
+				}
+			}
+			renameAllDirectories(newPath, showAll);
+		}
+	});
 }
 
-/**
- * Deletes a folder and all its contents.
- * @param {string} uploadDir - The base uploads directory for security checks.
- * @param {string} folderName - The relative path of the folder to delete.
- */
 function deleteFolder(uploadDir, folderName) {
-    if (!folderName) return false;
-
-    const folderPath = path.join(uploadDir, folderName);
-    
-    // Security check: only allow deletion within the upload directory.
-    if (!folderPath.startsWith(uploadDir + path.sep)) {
-        console.warn(`Attempted to delete folder outside of upload directory: ${folderPath}`);
-        return false;
-    }
-
-    if (fs.existsSync(folderPath)) {
-        try {
-            fs.rmSync(folderPath, { recursive: true, force: true });
-            console.log(`🗑️ Folder deleted: ${folderPath}`);
-            return true;
-        } catch (e) {
-            console.error(`Failed to delete folder: ${folderPath}`, e);
-            return false;
-        }
-    }
-    return false;
+	if (!folderName) return;
+	const folderPath = path.join(uploadDir, folderName);
+	if (path.resolve(folderPath).startsWith(path.resolve(uploadDir) + path.sep) && fs.existsSync(folderPath)) {
+		try {
+			fs.rmSync(folderPath, { recursive: true, force: true });
+			console.log(`🗑️ Folder deleted: ${folderPath}`);
+		} catch (e) {
+			console.error("Failed to delete folder:", e);
+		}
+	}
 }
 
+// --- Media File Operations ---
 
-// --- Photo/File Operations ---
+function getMediaFiles(folderPath, sortBy = "exif_desc", uploadDir = null) {
+	if (!fs.existsSync(folderPath)) return [];
 
-/**
- * Gets a sorted list of media files from a folder.
- * @param {string} folderPath - The full path to the folder.
- * @param {string} sortBy - The sorting key ('date_desc', 'date_asc', 'name_asc').
- * @returns {object[]} - An array of file info objects.
- */
-function getMediaFiles(folderPath, sortBy = 'date_desc') {
-    if (!fs.existsSync(folderPath)) return [];
+	const dateCache = loadDateCache();
+	const favSet = loadFavorites();
+	const baseRoot = uploadDir || path.join(__dirname, "..", "..", "uploads");
+	const files = fs.readdirSync(folderPath);
+	const mediaExts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".ogg", ".mov"];
 
-    const files = fs.readdirSync(folderPath);
-    const mediaFiles = files.map(file => {
-        try {
-            const filePath = path.join(folderPath, file);
-            const stats = fs.statSync(filePath);
-            return { name: file, birthtime: stats.birthtime, isFile: stats.isFile() };
-        } catch (e) {
-            console.error(`Failed to stat file ${file}:`, e);
-            return null;
-        }
-    }).filter(fileInfo => {
-        if (!fileInfo || !fileInfo.isFile) return false;
-        const ext = path.extname(fileInfo.name).toLowerCase();
-        return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.ogg', '.mov'].includes(ext);
-    });
+	const mediaFiles = files
+		.map((file) => {
+			const filePath = path.join(folderPath, file);
+			try {
+				const stats = fs.statSync(filePath);
+				if (!stats.isFile()) return null;
+				const ext = path.extname(file).toLowerCase();
+				if (!mediaExts.includes(ext)) return null;
 
-    // Sort the files
-    mediaFiles.sort((a, b) => {
-        switch (sortBy) {
-            case 'name_asc': return a.name.localeCompare(b.name);
-            case 'name_desc': return b.name.localeCompare(a.name);
-            case 'date_asc': return a.birthtime.getTime() - b.birthtime.getTime();
-            case 'date_desc':
-            default: return b.birthtime.getTime() - a.birthtime.getTime();
-        }
-    });
+				const relPath = path.relative(baseRoot, filePath).split(path.sep).join("/");
+				const cached = dateCache[relPath];
+				let takenAt = null;
+				let dateLabel = null;
 
-    return mediaFiles;
+				if (cached && cached.year && cached.month && cached.day) {
+					takenAt = cached.takenAt || Date.UTC(cached.year, cached.month - 1, cached.day);
+					dateLabel = `${cached.year}-${String(cached.month).padStart(2, "0")}-${String(cached.day).padStart(2, "0")}`;
+				} else if (ext === ".jpg" || ext === ".jpeg") {
+					const fast = readExifTimestampFast(filePath);
+					if (fast) {
+						takenAt = fast.takenAt;
+						dateLabel = fast.dateLabel;
+					}
+				}
+
+				if (!takenAt) {
+					const fallbackMs = stats.mtimeMs || stats.birthtimeMs;
+					takenAt = fallbackMs;
+					const d = new Date(fallbackMs);
+					dateLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+				}
+
+				return {
+					name: file,
+					relPath,
+					birthtime: stats.birthtime,
+					takenAt,
+					dateLabel,
+					isFavorite: favSet.has(relPath),
+					isFile: true
+				};
+			} catch (e) {
+				console.error(`Failed to stat file ${file}:`, e);
+				return null;
+			}
+		})
+		.filter(Boolean);
+
+	mediaFiles.sort((a, b) => {
+		switch (sortBy) {
+			case "fav_first":
+				if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+				return b.takenAt - a.takenAt;
+			case "exif_asc":
+				return a.takenAt - b.takenAt;
+			case "date_asc":
+				return a.birthtime.getTime() - b.birthtime.getTime();
+			case "date_desc":
+				return b.birthtime.getTime() - a.birthtime.getTime();
+			case "name_asc":
+				return a.name.localeCompare(b.name);
+			case "name_desc":
+				return b.name.localeCompare(a.name);
+			case "exif_desc":
+			default:
+				return b.takenAt - a.takenAt;
+		}
+	});
+
+	return mediaFiles;
 }
 
-/**
- * Toggles the visibility of a single photo by adding/removing a '!' prefix.
- * @param {string} uploadDir - The base uploads directory.
- * @param {string} folderName - The folder containing the photo.
- * @param {string} fileName - The name of the photo file.
- */
 function togglePhotoVisibility(uploadDir, folderName, fileName) {
-    if (!folderName || !fileName) return;
+	if (!folderName || !fileName) return;
+	const oldPath = path.join(uploadDir, folderName, fileName);
+	if (!fs.existsSync(oldPath)) return;
 
-    const oldPath = path.join(uploadDir, folderName, fileName);
-    if (!fs.existsSync(oldPath)) return;
+	const parentDir = path.dirname(oldPath);
+	const baseName = path.basename(oldPath);
+	const newBaseName = baseName.startsWith("!") ? baseName.substring(1) : `!${baseName}`;
+	const newPath = path.join(parentDir, newBaseName);
 
-    const parentDir = path.dirname(oldPath);
-    const baseName = path.basename(oldPath);
-
-    const newBaseName = baseName.startsWith('!') ? baseName.substring(1) : `!${baseName}`;
-    const newPath = path.join(parentDir, newBaseName);
-
-    try {
-        fs.renameSync(oldPath, newPath);
-    } catch (e) {
-        console.error(`Failed to rename photo: ${oldPath}`, e);
-    }
+	try {
+		fs.renameSync(oldPath, newPath);
+	} catch (e) {
+		console.error(`Failed to rename photo: ${oldPath}`, e);
+	}
 }
 
-/**
- * Deletes a single photo file.
- * @param {string} uploadDir - The base uploads directory.
- * @param {string} folderName - The folder containing the photo.
- * @param {string} fileName - The name of the photo file.
- */
 function deletePhoto(uploadDir, folderName, fileName) {
-    if (!folderName || !fileName) return;
-
-    const filePath = path.join(uploadDir, folderName, fileName);
-    // Security check and file existence
-    if (filePath.startsWith(uploadDir) && fs.existsSync(filePath)) {
-        try {
-            fs.unlinkSync(filePath);
-            console.log(`🗑️ File deleted: ${filePath}`);
-        } catch (e) {
-            console.error('Failed to delete photo:', e);
-        }
-    }
+	if (!folderName || !fileName) return;
+	const filePath = path.join(uploadDir, folderName, fileName);
+	if (path.resolve(filePath).startsWith(path.resolve(uploadDir) + path.sep) && fs.existsSync(filePath)) {
+		try {
+			fs.unlinkSync(filePath);
+			console.log(`🗑️ File deleted: ${filePath}`);
+		} catch (e) {
+			console.error("Failed to delete photo:", e);
+		}
+	}
 }
 
-/**
- * Deletes all photo files within a specific folder.
- * @param {string} uploadDir - The base uploads directory.
- * @param {string} folderName - The folder from which to delete photos.
- */
 function deleteAllPhotosInFolder(uploadDir, folderName) {
-    const folderPath = path.join(uploadDir, folderName);
-    if (!folderPath.startsWith(uploadDir) || !fs.existsSync(folderPath)) return;
+	const folderPath = path.join(uploadDir, folderName);
+	if (!path.resolve(folderPath).startsWith(path.resolve(uploadDir) + path.sep) || !fs.existsSync(folderPath)) return;
 
-    const files = fs.readdirSync(folderPath);
-    const mediaExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.ogg', '.mov'];
-    
-    files.forEach(file => {
-        const filePath = path.join(folderPath, file);
-        if (mediaExtensions.includes(path.extname(file).toLowerCase())) {
-            try {
-                fs.unlinkSync(filePath);
-            } catch (e) {
-                console.error(`Failed to delete photo: ${filePath}`, e);
-            }
-        }
-    });
-    console.log(`🗑️ All media files deleted from folder: ${folderPath}`);
+	const files = fs.readdirSync(folderPath);
+	const mediaExtensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".webm", ".ogg", ".mov"];
+	files.forEach((file) => {
+		const filePath = path.join(folderPath, file);
+		if (mediaExtensions.includes(path.extname(file).toLowerCase())) {
+			try {
+				fs.unlinkSync(filePath);
+			} catch (e) {
+				console.error(`Failed to delete photo: ${filePath}`, e);
+			}
+		}
+	});
 }
 
-/**
- * Renames all photos in a folder to be shown or hidden.
- * @param {string} folderPath - The full path of the folder.
- * @param {boolean} showAll - True to show all (remove '!'), false to hide all (add '!').
- */
 function renameAllPhotosInFolder(folderPath, showAll) {
-    if (!fs.existsSync(folderPath)) return;
-
-    const files = fs.readdirSync(folderPath);
-    files.forEach(file => {
-        const oldPath = path.join(folderPath, file);
-        try {
-            if (fs.statSync(oldPath).isFile()) {
-                const isHidden = file.startsWith('!');
-                let newFile = file;
-
-                if (showAll && isHidden) {
-                    newFile = file.substring(1);
-                } else if (!showAll && !isHidden) {
-                    newFile = '!' + file;
-                }
-
-                if (newFile !== file) {
-                    fs.renameSync(oldPath, path.join(folderPath, newFile));
-                }
-            }
-        } catch (e) {
-            console.error(`Failed to process file ${oldPath}:`, e);
-        }
-    });
+	if (!fs.existsSync(folderPath)) return;
+	const files = fs.readdirSync(folderPath);
+	files.forEach((file) => {
+		const oldPath = path.join(folderPath, file);
+		try {
+			if (fs.statSync(oldPath).isFile()) {
+				const isHidden = file.startsWith("!");
+				let newFile = file;
+				if (showAll && isHidden) newFile = file.substring(1);
+				else if (!showAll && !isHidden) newFile = "!" + file;
+				if (newFile !== file) {
+					fs.renameSync(oldPath, path.join(folderPath, newFile));
+				}
+			}
+		} catch (e) {
+			console.error(`Failed to process file ${oldPath}:`, e);
+		}
+	});
 }
-
 
 module.exports = {
-    getDirectories,
-    getSubdirectories,
-    toggleFolderVisibility,
-    renameAllDirectories,
-    deleteFolder,
-    getMediaFiles,
-    togglePhotoVisibility,
-    deletePhoto,
-    deleteAllPhotosInFolder,
-    renameAllPhotosInFolder,
+	getDirectories,
+	getSubdirectories,
+	toggleFolderVisibility,
+	renameAllDirectories,
+	deleteFolder,
+	getMediaFiles,
+	togglePhotoVisibility,
+	deletePhoto,
+	deleteAllPhotosInFolder,
+	renameAllPhotosInFolder,
+	loadFavorites,
+	toggleFavoritePath
 };

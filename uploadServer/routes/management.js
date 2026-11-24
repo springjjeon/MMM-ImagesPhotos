@@ -41,6 +41,23 @@ function readScreenStatus(callback) {
 	});
 }
 
+function readBrightness(callback) {
+	execFile("ddcutil", ["getvcp", "10"], { timeout: 5000 }, (err, stdout) => {
+		if (err || !stdout) return callback(null);
+		const match = stdout.match(/current value\s*=\s*(\d+)/i);
+		callback(match ? Number(match[1]) : null);
+	});
+}
+
+function setBrightness(value, callback) {
+	const clamped = Math.max(10, Math.min(100, Math.round(Number(value))));
+	if (Number.isNaN(clamped)) return callback(new Error("Invalid brightness value"));
+	execFile("ddcutil", ["setvcp", "10", String(clamped)], { timeout: 6000 }, (err) => {
+		if (err) return callback(err);
+		callback(null, clamped);
+	});
+}
+
 function createManagementRouter(uploadDir) {
 	const router = express.Router();
 
@@ -93,10 +110,10 @@ function createManagementRouter(uploadDir) {
 		}
 	});
 
-	// --- Photo Management Page (Fast Cached 360px Thumbnails + Lazy Load) ---
+	// --- Photo Management Page (Fast Cached 360px Thumbnails + EXIF Date Sort + Favorites) ---
 	router.get("/photos", async (req, res) => {
 		const folderName = req.query.folderName;
-		const sortBy = req.query.sortBy || "date_desc";
+		const sortBy = req.query.sortBy || "exif_desc";
 
 		if (!folderName) return res.redirect("/");
 
@@ -135,7 +152,7 @@ function createManagementRouter(uploadDir) {
 				</div>`
 				: "";
 
-		const mediaFiles = fileUtils.getMediaFiles(folderPath, sortBy);
+		const mediaFiles = fileUtils.getMediaFiles(folderPath, sortBy, uploadDir);
 		const photoListHtml =
 			mediaFiles.length > 0
 				? mediaFiles
@@ -153,15 +170,29 @@ function createManagementRouter(uploadDir) {
 								? `<video src="${fullUrl}#t=0.5" preload="metadata" muted playsinline style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}')"></video>`
 								: `<img src="${thumbUrl}" alt="${displayName}" loading="lazy" decoding="async" style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}')">`;
 
+							const favBtnStyle = fileInfo.isFavorite
+								? "background:#f59f00; color:#111; font-weight:700;"
+								: "background:#e9ecef; color:#495057;";
+
 							return `
 								<div class="photo-card ${isHidden ? "is-hidden" : ""}">
 									<div class="photo-image-container">
 										${mediaElement}
 										${isVideo ? '<div class="video-indicator">▶</div>' : ""}
+										${fileInfo.isFavorite ? '<div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.65);color:#ffd43b;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;">⭐</div>' : ""}
 										${isHidden ? '<div class="hidden-overlay"><span>숨김</span></div>' : ""}
 									</div>
-									<div class="photo-name" title="${displayName}">${displayName}</div>
+									<div class="photo-name" title="${displayName}">
+										${displayName}
+										<div style="font-size:11px;color:#888;margin-top:2px;">🗓️ ${fileInfo.dateLabel || "-"}</div>
+									</div>
 									<div class="photo-actions">
+										<form action="/manage/toggle-favorite" method="post" style="margin:0;">
+											<input type="hidden" name="folderName" value="${folderName}">
+											<input type="hidden" name="relPath" value="${fileInfo.relPath}">
+											<input type="hidden" name="sortBy" value="${sortBy}">
+											<button type="submit" class="action-btn" style="${favBtnStyle}">${fileInfo.isFavorite ? "★" : "☆"}</button>
+										</form>
 										<form action="/manage/toggle-photo" method="post" style="margin:0;">
 											<input type="hidden" name="folderName" value="${folderName}"><input type="hidden" name="fileName" value="${file}">
 											<button type="submit" class="action-btn toggle-btn ${isHidden ? "show-btn" : "hide-btn"}">${isHidden ? "보이기" : "숨기기"}</button>
@@ -181,7 +212,7 @@ function createManagementRouter(uploadDir) {
 			const url = `?folderName=${encodeURIComponent(folderName)}&sortBy=${key}`;
 			return `<a href="${url}" class="sort-link ${isActive ? "active" : ""}">${text}</a>`;
 		};
-		const sortLinks = `${sortLink("date_desc", "최신순")} ${sortLink("date_asc", "오래된순")} ${sortLink("name_asc", "이름순")}`;
+		const sortLinks = `${sortLink("exif_desc", "촬영일 최신순")} ${sortLink("exif_asc", "촬영일 오래된순")} ${sortLink("fav_first", "⭐ 즐겨찾기 우선")} ${sortLink("name_asc", "이름순")}`;
 
 		const pageContent = render("manage-photos", {
 			displayName: folderName.replace(/!/g, "").split(path.sep).join(" / "),
@@ -192,6 +223,15 @@ function createManagementRouter(uploadDir) {
 		});
 
 		res.send(pageContent);
+	});
+
+	router.post("/toggle-favorite", (req, res) => {
+		const { folderName, relPath, sortBy } = req.body;
+		if (relPath) {
+			fileUtils.toggleFavoritePath(relPath);
+			callMagicMirrorApi("POST", "/refresh", {}, () => {});
+		}
+		res.redirect(`/manage/photos?folderName=${encodeURIComponent(folderName || "")}&sortBy=${encodeURIComponent(sortBy || "exif_desc")}`);
 	});
 
 	router.post("/toggle-photo", (req, res) => {
@@ -228,6 +268,24 @@ function createManagementRouter(uploadDir) {
 		notifyMagicMirrorRefresh(() => res.redirect(`/manage/photos?folderName=${encodeURIComponent(folderName)}`));
 	});
 
+	// --- Brightness Control API (DDC/CI VCP 0x10) ---
+	router.get("/api/brightness", (req, res) => {
+		readBrightness((brightness) => {
+			if (brightness === null) {
+				return res.status(503).json({ ok: false, error: "모니터 밝기 조회 불가" });
+			}
+			res.json({ ok: true, brightness });
+		});
+	});
+
+	router.post("/api/brightness", (req, res) => {
+		const val = req.body && req.body.value;
+		setBrightness(val, (err, applied) => {
+			if (err) return res.status(500).json({ ok: false, error: err.message });
+			res.json({ ok: true, brightness: applied });
+		});
+	});
+
 	// --- Remote Control & System Health APIs ---
 	router.get("/api/system-status", (req, res) => {
 		const totalMemMB = Math.round(os.totalmem() / 1024 / 1024);
@@ -238,25 +296,35 @@ function createManagementRouter(uploadDir) {
 		readDiskUsage((disk) => {
 			isMagicMirrorRunning((mmRunning) => {
 				readScreenStatus((screenStatus) => {
-					const finalize = (mmStatus) => {
-						res.json({
-							ok: true,
-							cpuTempC,
-							memory: { usedMB: usedMemMB, totalMB: totalMemMB, percent: Math.round((usedMemMB / totalMemMB) * 100) },
-							disk,
-							mmRunning,
-							screenStatus,
-							mm: mmStatus,
-							videoQueue: videoQueue.getStatus()
-						});
+					const afterBrightness = (brightness) => {
+						const finalize = (mmStatus) => {
+							res.json({
+								ok: true,
+								cpuTempC,
+								memory: { usedMB: usedMemMB, totalMB: totalMemMB, percent: Math.round((usedMemMB / totalMemMB) * 100) },
+								disk,
+								mmRunning,
+								screenStatus,
+								brightness,
+								favoriteCount: fileUtils.loadFavorites().size,
+								mm: mmStatus,
+								videoQueue: videoQueue.getStatus()
+							});
+						};
+
+						if (mmRunning) {
+							callMagicMirrorApi("GET", "/status", null, (err, data) => {
+								finalize(err ? null : data);
+							});
+						} else {
+							finalize(null);
+						}
 					};
 
-					if (mmRunning) {
-						callMagicMirrorApi("GET", "/status", null, (err, data) => {
-							finalize(err ? null : data);
-						});
+					if (screenStatus === "on") {
+						readBrightness(afterBrightness);
 					} else {
-						finalize(null);
+						afterBrightness(null);
 					}
 				});
 			});
@@ -286,7 +354,14 @@ function createManagementRouter(uploadDir) {
 			});
 			return;
 		}
-		if (["next", "pause", "resume", "toggle-pause"].includes(action)) {
+		if (action === "toggle-favorite") {
+			callMagicMirrorApi("POST", "/favorite", {}, (err, data) => {
+				if (err) return res.status(500).json({ ok: false, error: err.message });
+				return res.json({ ok: true, ...data });
+			});
+			return;
+		}
+		if (["next", "prev", "pause", "resume", "toggle-pause"].includes(action)) {
 			callMagicMirrorApi("POST", "/control", { action }, (err, data) => {
 				if (err) return res.status(500).json({ ok: false, error: err.message });
 				return res.json({ ok: true, ...data });

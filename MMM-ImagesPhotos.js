@@ -67,6 +67,8 @@ Module.register(ourModuleName, {
   fullscreen: false,
   photos: [],
   photoDeck: [],
+  photoHistory: [],
+  goingBack: false,
   currentPhoto: null,
   nextPhoto: null,
   lastPhotoIndex: -1,
@@ -80,6 +82,8 @@ Module.register(ourModuleName, {
     this.paused = false;
     this.fadeTimers = [];
     this.photoDeck = [];
+    this.photoHistory = [];
+    this.goingBack = false;
     this.config.id = this.identifier;
     this.sendSocketNotification("CONFIG", this.config);
     try { Log.info(`${this.name}: start()`); } catch (e) {}
@@ -151,6 +155,15 @@ Module.register(ourModuleName, {
     if (notification === "REMOTE_CONTROL" && payload.id === this.identifier) {
       this.handleRemoteControl(payload.action);
     }
+    if (notification === "FAVORITE_UPDATED" && payload.id === this.identifier) {
+      if (this.currentPhoto && this.currentPhoto.path === payload.path) {
+        this.currentPhoto.isFavorite = payload.isFavorite;
+        this.updateFavoriteBadgeDom();
+      }
+      this.photos.forEach((p) => {
+        if (p.path === payload.path) p.isFavorite = payload.isFavorite;
+      });
+    }
   },
 
   handleRemoteControl(action) {
@@ -163,6 +176,8 @@ Module.register(ourModuleName, {
       this.setPaused(!this.paused);
     } else if (action === "next") {
       this.advanceNow();
+    } else if (action === "prev") {
+      this.goPrevNow();
     }
   },
 
@@ -190,6 +205,40 @@ Module.register(ourModuleName, {
       this.prepareNextPhoto();
     }
     this.waitForNextPhotoAndUpdate(0);
+  },
+
+  goPrevNow() {
+    if (!this.photoHistory || this.photoHistory.length === 0) {
+      Log.info(`[MMM-ImagesPhotos] No previous photo in history.`);
+      return;
+    }
+    this.clearFadeTimers();
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const prevPhoto = this.photoHistory.pop();
+    this.nextPhoto = prevPhoto;
+    this.goingBack = true;
+    this.triggerDomUpdate();
+  },
+
+  updateFavoriteBadgeDom() {
+    if (!this.fg || !this.currentPhoto) return;
+    const exifBox = this.fg.querySelector(".exif-info");
+    if (!exifBox) return;
+    const existing = exifBox.querySelector(".mmip-fav-badge");
+    if (this.currentPhoto.isFavorite && !existing) {
+      const badge = document.createElement("span");
+      badge.className = "mmip-fav-badge";
+      badge.textContent = "⭐ 즐겨찾기";
+      exifBox.prepend(document.createElement("br"));
+      exifBox.prepend(badge);
+    } else if (!this.currentPhoto.isFavorite && existing) {
+      const nextEl = existing.nextSibling;
+      existing.remove();
+      if (nextEl && nextEl.nodeName === "BR") nextEl.remove();
+    }
   },
 
   updatePauseBadge() {
@@ -258,6 +307,9 @@ Module.register(ourModuleName, {
 
   buildPhotoDeck(filteredPhotos) {
     const deck = filteredPhotos.slice();
+    // Give favorited photos 2x exposure weight in the deck
+    const favs = filteredPhotos.filter((p) => p.isFavorite === true);
+    favs.forEach((f) => deck.push(f));
     // Fisher-Yates shuffle for non-repeating random cycle
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -699,6 +751,14 @@ Module.register(ourModuleName, {
     this.clearFadeTimers();
     this.cleanupFaceStyles();
 
+    if (!this.goingBack && this.currentPhoto) {
+      this.photoHistory.push(JSON.parse(JSON.stringify(this.currentPhoto)));
+      if (this.photoHistory.length > 25) {
+        this.photoHistory.shift();
+      }
+    }
+    this.goingBack = false;
+
     this.currentPhoto = JSON.parse(JSON.stringify(this.nextPhoto));
     this.nextPhoto = null;
 
@@ -737,6 +797,9 @@ Module.register(ourModuleName, {
     const infoParts = [];
     const tags = photoImage.exif && photoImage.exif.tags ? photoImage.exif.tags : null;
 
+    if (photoImage.isFavorite) {
+      infoParts.push(`<span class="mmip-fav-badge">⭐ 즐겨찾기</span>`);
+    }
     if (photoImage.memoryYearsAgo && photoImage.memoryYearsAgo >= 1) {
       infoParts.push(`<span class="mmip-memory-badge">🎂 ${photoImage.memoryYearsAgo}년 전 오늘</span>`);
     }
@@ -1007,6 +1070,23 @@ Module.register(ourModuleName, {
 
             img.src = item.url;
             cell.appendChild(img);
+
+            const capParts = [];
+            if (item.isFavorite) capParts.push("⭐");
+            if (item.memoryYearsAgo && item.memoryYearsAgo >= 1) capParts.push(`🎂 ${item.memoryYearsAgo}년 전 오늘`);
+            let dateLabel = item.dateStr || "";
+            if (!dateLabel && item.exif && item.exif.tags && typeof item.exif.tags.DateTimeOriginal === "number") {
+              const d = new Date(item.exif.tags.DateTimeOriginal * 1000);
+              dateLabel = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+            }
+            if (dateLabel) capParts.push(`🗓️ ${dateLabel}`);
+            if (capParts.length > 0) {
+              const cap = document.createElement("div");
+              cap.className = "mmip-collage-caption";
+              cap.textContent = capParts.join(" · ");
+              cell.appendChild(cap);
+            }
+
             grid.appendChild(cell);
           });
 

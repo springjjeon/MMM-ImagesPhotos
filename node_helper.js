@@ -22,6 +22,7 @@ const FACE_CACHE_FILE = path.join(CACHE_DIR, "face-detection-cache.json");
 const GEOCODE_CACHE_FILE = path.join(CACHE_DIR, "geocode-cache.json");
 const DATE_CACHE_FILE = path.join(CACHE_DIR, "exif-date-cache.json");
 const DIM_CACHE_FILE = path.join(CACHE_DIR, "dimensions-cache.json");
+const FAVORITES_FILE = path.join(CACHE_DIR, "favorites.json");
 const CACHE_SAVE_DEBOUNCE_MS = 3000;
 const FACE_SCRIPT_TIMEOUT_MS = 15000;
 const GEOCODE_TIMEOUT_MS = 10000;
@@ -54,7 +55,11 @@ function saveJsonCacheAtomic(filePath, data) {
 	}
 }
 
-function readImageDimensionsFast(filePath) {
+function formatDateStr(year, month, day) {
+	return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function readImageMetaFast(filePath) {
 	try {
 		const ext = path.extname(filePath).toLowerCase();
 		if (ext === ".png") {
@@ -63,7 +68,7 @@ function readImageDimensionsFast(filePath) {
 			fs.readSync(fd, buf, 0, 24, 0);
 			fs.closeSync(fd);
 			if (buf.toString("ascii", 1, 4) === "PNG") {
-				return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+				return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), takenAt: null };
 			}
 			return null;
 		}
@@ -74,18 +79,40 @@ function readImageDimensionsFast(filePath) {
 			fs.closeSync(fd);
 			const parsed = exifParser.create(buf).parse();
 			const sz = parsed.getImageSize();
+			let width = null;
+			let height = null;
 			if (sz && sz.width && sz.height) {
 				const orient = (parsed.tags && parsed.tags.Orientation) || 1;
 				const rotated = orient >= 5 && orient <= 8;
-				return rotated
-					? { width: sz.height, height: sz.width }
-					: { width: sz.width, height: sz.height };
+				width = rotated ? sz.height : sz.width;
+				height = rotated ? sz.width : sz.height;
 			}
+			let dateInfo = null;
+			if (parsed.tags && typeof parsed.tags.DateTimeOriginal === "number") {
+				const dt = new Date(parsed.tags.DateTimeOriginal * 1000);
+				dateInfo = {
+					year: dt.getUTCFullYear(),
+					month: dt.getUTCMonth() + 1,
+					day: dt.getUTCDate(),
+					takenAt: parsed.tags.DateTimeOriginal * 1000
+				};
+			}
+			return { width, height, dateInfo };
 		}
 	} catch (_) {
 		// ignore
 	}
 	return null;
+}
+
+function loadFavoritesSet() {
+	try {
+		if (fs.existsSync(FAVORITES_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(FAVORITES_FILE, "utf8"));
+			if (Array.isArray(parsed)) return new Set(parsed);
+		}
+	} catch (_) {}
+	return new Set();
 }
 
 function computeMemoryYearsAgo(year, month, day) {
@@ -145,6 +172,7 @@ module.exports = NodeHelper.create({
 	geocodeCache: {},
 	dateCache: {},
 	dimCache: {},
+	favorites: new Set(),
 	faceCacheSaveTimer: null,
 	geocodeCacheSaveTimer: null,
 	dateCacheSaveTimer: null,
@@ -352,6 +380,7 @@ module.exports = NodeHelper.create({
 		this.geocodeCache = loadJsonCache(GEOCODE_CACHE_FILE);
 		this.dateCache = loadJsonCache(DATE_CACHE_FILE);
 		this.dimCache = loadJsonCache(DIM_CACHE_FILE);
+		this.favorites = loadFavoritesSet();
 		this.activeInstances = new Set();
 		this.currentDisplayed = {};
 		this.pausedState = false;
@@ -382,12 +411,14 @@ module.exports = NodeHelper.create({
 		this.expressApp.get("/MMM-ImagesPhotos/api/status", (req, res) => {
 			const instances = Array.from(this.activeInstances);
 			const primaryId = instances[0] || null;
-			const currentPhoto = primaryId ? (this.currentDisplayed[primaryId] || null) : null;
+			const rawCurrent = primaryId ? (this.currentDisplayed[primaryId] || null) : null;
+			const currentPhoto = rawCurrent ? { ...rawCurrent, isFavorite: Boolean(rawCurrent.path && this.favorites.has(rawCurrent.path)) } : null;
 			res.json({
 				ok: true,
 				instances,
 				paused: this.pausedState,
 				currentPhoto,
+				favoriteCount: this.favorites.size,
 				faceCacheCount: Object.keys(this.faceCache).length,
 				geocodeCacheCount: Object.keys(this.geocodeCache).length,
 				dateCacheCount: Object.keys(this.dateCache).length
@@ -405,7 +436,7 @@ module.exports = NodeHelper.create({
 
 		this.expressApp.post("/MMM-ImagesPhotos/api/control", (req, res) => {
 			const action = req.body && req.body.action;
-			const allowed = ["next", "pause", "resume", "toggle-pause"];
+			const allowed = ["next", "prev", "pause", "resume", "toggle-pause"];
 			if (!allowed.includes(action)) {
 				return res.status(400).json({ ok: false, error: "Invalid action" });
 			}
@@ -419,6 +450,33 @@ module.exports = NodeHelper.create({
 			});
 			console.log(`[MMM-ImagesPhotos] Remote control action=${action} sent to ${instances.length} instance(s)`);
 			res.json({ ok: true, action, paused: this.pausedState });
+		});
+
+		this.expressApp.post("/MMM-ImagesPhotos/api/favorite", (req, res) => {
+			const instances = Array.from(this.activeInstances);
+			const primaryId = instances[0];
+			const current = primaryId ? this.currentDisplayed[primaryId] : null;
+			const targetPath = (req.body && req.body.path) || (current && current.path);
+			if (!targetPath) {
+				return res.status(404).json({ ok: false, error: "No target photo specified" });
+			}
+
+			let isFavorite;
+			if (this.favorites.has(targetPath)) {
+				this.favorites.delete(targetPath);
+				isFavorite = false;
+			} else {
+				this.favorites.add(targetPath);
+				isFavorite = true;
+			}
+			saveJsonCacheAtomic(FAVORITES_FILE, Array.from(this.favorites));
+
+			instances.forEach((id) => {
+				this.sendSocketNotification("FAVORITE_UPDATED", { id, path: targetPath, isFavorite });
+				this.sendSocketNotification("PHOTOS_UPDATED", { id });
+			});
+
+			res.json({ ok: true, path: targetPath, isFavorite, favoriteCount: this.favorites.size });
 		});
 
 		this.expressApp.post("/MMM-ImagesPhotos/api/hide-current", (req, res) => {
@@ -488,7 +546,8 @@ module.exports = NodeHelper.create({
 				exif: null,
 				location: null,
 				face: null,
-				memoryYearsAgo: 0
+				memoryYearsAgo: photo.memoryYearsAgo || 0,
+				isFavorite: this.favorites.has(photo.path)
 			};
 
 			const mediaType = mime.lookup(imagePath);
@@ -579,6 +638,8 @@ module.exports = NodeHelper.create({
 		console.log(`[MMM-ImagesPhotos] Loaded ${imgs.length} media files (${id})`);
 
 		let dimUpdated = false;
+		let dateUpdated = false;
+		this.favorites = loadFavoritesSet();
 		const initialPhotos = imgs.map((img) => {
 			const entry = {
 				url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
@@ -595,28 +656,48 @@ module.exports = NodeHelper.create({
 					if (cachedDim && cachedDim.mtimeMs === st.mtimeMs && cachedDim.size === st.size) {
 						entry.isPortrait = cachedDim.height > cachedDim.width;
 					} else {
-						const dims = readImageDimensionsFast(fullPath);
-						if (dims && dims.width && dims.height) {
-							this.dimCache[img] = { mtimeMs: st.mtimeMs, size: st.size, width: dims.width, height: dims.height };
+						const meta = readImageMetaFast(fullPath);
+						if (meta && meta.width && meta.height) {
+							this.dimCache[img] = { mtimeMs: st.mtimeMs, size: st.size, width: meta.width, height: meta.height };
 							dimUpdated = true;
-							entry.isPortrait = dims.height > dims.width;
+							entry.isPortrait = meta.height > meta.width;
+						}
+						if (meta && meta.dateInfo) {
+							this.dateCache[img] = { mtimeMs: st.mtimeMs, size: st.size, ...meta.dateInfo };
+							dateUpdated = true;
 						}
 					}
 				} catch (_) {
 					// ignore
 				}
 			}
-			const dc = this.dateCache[img];
+			let dc = this.dateCache[img];
+			if (!dc) {
+				try {
+					const st = fs.statSync(fullPath);
+					const meta = readImageMetaFast(fullPath);
+					if (meta && meta.dateInfo) {
+						dc = { mtimeMs: st.mtimeMs, size: st.size, ...meta.dateInfo };
+						this.dateCache[img] = dc;
+						dateUpdated = true;
+					}
+				} catch (_) {}
+			}
 			if (dc && dc.year && dc.month && dc.day) {
+				entry.dateStr = formatDateStr(dc.year, dc.month, dc.day);
 				const yearsAgo = computeMemoryYearsAgo(dc.year, dc.month, dc.day);
 				if (yearsAgo >= 1) {
 					entry.memoryYearsAgo = yearsAgo;
 				}
 			}
+			entry.isFavorite = this.favorites.has(img);
 			return entry;
 		});
 		if (dimUpdated) {
 			this.scheduleSaveDimCache();
+		}
+		if (dateUpdated) {
+			this.scheduleSaveDateCache();
 		}
 		res.send(initialPhotos);
 	},

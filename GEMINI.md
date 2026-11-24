@@ -121,3 +121,12 @@ MagicMirror 프로세스(`node_helper.js`)가 로컬 전용 제어 API를 제공
 4. **Git 커밋 규칙**:
    - `type(scope): subject` 형식 권장 (예: `feat(collage): ...`, `fix(ui): ...`, `chore(ops): ...`).
    - `.cache/`, `.temp-uploads/`, `uploads/`, `node_modules/`는 `.gitignore`에 의해 제외됨.
+
+---
+
+## 6. 추가 기능 (2026-11-24 2차 업그레이드)
+- **이전 사진 히스토리 (`prev`)**: `photoHistory` 최대 25장 보관, 리모컨 `⏮️ 이전 사진` (`POST /MMM-ImagesPhotos/api/control { action: "prev" }`) 지원
+- **즐겨찾기 (`favorites`)**: `.cache/favorites.json` 저장, 셔플 덱 **2배 가중치**, 메타정보 `⭐ 즐겨찾기` 배지, 리모컨(`POST /MMM-ImagesPhotos/api/favorite`) 및 사진 관리 카드 `★/☆` 토글 지원
+- **콜라주 개별 캡션**: 2장 콜라주 각 셀 좌측 하단(`.mmip-collage-caption`)에 사진별 EXIF 촬영일·즐겨찾기·추억 배지 표시
+- **사진 관리 EXIF 촬영일 정렬**: `file-utils.js`가 `.cache/exif-date-cache.json` + 64KB 헤더 스캔으로 `촬영일 최신순(exif_desc)` / `촬영일 오래된순(exif_asc)` / `⭐ 즐겨찾기 우선(fav_first)` 정렬 지원
+- **모니터 밝기 제어 & 야간 자동 디밍**: `GET/POST /manage/api/brightness` (`ddcutil` VCP `0x10`, 10~100%), 리모컨 슬라이더/프리셋, `~/autoBrightness.sh` + `crontab` (07:30 `80%`, 21:00 `35%`, 화면 ON일 때만 동작)
