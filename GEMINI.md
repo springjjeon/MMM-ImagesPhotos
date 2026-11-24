@@ -1,133 +1,123 @@
-# MMM-ImagesPhotos 개발/유지보수 지침
+# MMM-ImagesPhotos 개발 및 유지보수 지침 (AI Context)
 
-이 문서는 `MMM-ImagesPhotos` 모듈의 개발/유지보수 지침을 담습니다. 모듈별로 고유 규칙을 기록하고 PR로 변경을 관리하세요.
+이 문서는 라즈베리파이 전자 액자용 커스텀 `MMM-ImagesPhotos` 모듈의 구조, 확정된 사용자 선호 규칙, 캐시/API 설계, 주의사항을 정리한 기준 문서입니다.
 
-*마지막 수정일: 2026-03-27*
-
-## 목적
-- 모듈의 일관된 코드 스타일과 동작 규칙을 제공하여 유지보수를 쉽게 합니다.
-- 사진 효과(전환, 배경색, 애니메이션) 관련 결정과 성능 고려사항을 중앙화합니다.
-
-## 범위
-- 이 파일은 `modules/MMM-ImagesPhotos` 디렉터리 내부의 변경에 적용됩니다.
-
-## 코드 스타일
-- 프로젝트 전체의 ESLint/Prettier 설정을 따릅니다 (루트의 `eslint.config.mjs`, `prettier.config.mjs`).
-- JavaScript: ES2018+ 규칙, `const`/`let` 사용, 함수명/변수명은 camelCase.
-- CSS: 모듈 scoped 클래스(`.mmip-...`)를 사용하여 전역 스타일 충돌을 피합니다.
-
-## 효과 규칙
-- **전환 순서**: 검정(black) → 페이드인 → 표시 → 페이드아웃.
-- **효과 목록**: `still` (정지), `zoom`, `pan` (상/하/좌/우/대각선), `zoom-pan` 등 다양한 효과를 `config.js`의 `imageEffects` 배열을 통해 설정할 수 있습니다.
-- **애니메이션 속도**: 모든 애니메이션 효과의 지속 시간(duration)은 `20초 ~ 40초` 사이의 임의 값으로 설정되어 다양한 속도감을 제공합니다.
-- **이동(Pan) 및 줌(Zoom) 규칙**: 과도한 움직임을 방지하기 위해, 모든 이동 및 확대 효과는 15%(`scale(1.15)` 또는 `translate(15%)`)를 초과하지 않도록 제한됩니다.
-
-### 얼굴 인식 팬-줌(Pan-Zoom) 효과
-- **적용 확률**: 사진에서 얼굴이 인식되었을 경우, `40%`의 확률로 얼굴 줌 효과가 적용됩니다. (나머지 60%는 일반 효과 적용)
-- **효과 선택**: 얼굴 줌 효과 적용 시, 줌인(pan-zoom)과 줌아웃 중 하나가 무작위로 선택됩니다.
-- **대상 지정**: 사진에 여러 얼굴이 있을 경우, 효과의 중심이 될 얼굴 하나를 무작위로 선택합니다.
-- **줌인 시점**: 줌인 시, 선택된 얼굴이 화면의 **가로 중앙, 세로 30% 지점**으로 부드럽게 이동하며 확대되어 인물에 시선이 집중되도록 합니다. 이 동적 애니메이션은 JavaScript를 통해 생성됩니다.
-- **줌아웃 시점**: 줌아웃 시에는 얼굴을 중심으로 화면이 단순 축소됩니다.
-
-## 비디오 재생 기능
-동영상 파일을 지원하는 기능입니다. 설정을 통해 재생 여부, 재생 시간을 제어할 수 있습니다.
-
-### 설정 옵션
-- **`enableVideoPlayback`** (기본값: `true`)
-  - `true`: mp4, webm, ogg, mov 형식의 동영상 파일 재생 활성화
-  - `false`: 이미지 파일만 필터링되어 표시 (동영상 파일 무시)
-
-- **`videoPlaybackMultiplier`** (기본값: `1.5`)
-  - 동영상 재생 시간을 사진 표시 시간의 몇 배로 할지 설정
-  - 계산식: 동영상 표시 시간 = `updateInterval` × `videoPlaybackMultiplier`
-  - 예시: `updateInterval: 5000`(5초), `videoPlaybackMultiplier: 1.5` → 동영상 7.5초 재생
-
-### 동영상 재생 로직
-- **짧은 동영상** (재생 시간 < 표시 시간)
-  - 루프(`loop: true`) 설정으로 자동 반복 재생
-  - 표시 시간이 끝나면 다음 이미지로 전환
-
-- **긴 동영상** (재생 시간 > 표시 시간)
-  - 루프 비활성화 (`loop: false`)
-  - 무작위 시작 시점(`currentTime`)에서 재생 시작
-  - 표시 시간 동안 동영상의 일부만 재생
-
-### 에러 처리
-- **로드 타임아웃 (10초)**
-  - 비디오가 10초 내에 로드되지 않으면 자동으로 다음 이미지로 전환
-  - FFmpeg 또는 네트워크 문제로 응답이 없는 경우 대응
-
-- **에러 타입별 처리**
-  - `MEDIA_ERR_DECODE` (코드 3): 지원하지 않는 코덱이나 픽셀 포맷 문제
-    - 예시: "Unsupported pixel format: -1" FFmpeg 에러 자동 감지
-  - `MEDIA_ERR_SRC_NOT_SUPPORTED` (코드 4): 지원하지 않는 파일 형식
-  - 네트워크 에러, 로딩 중단 등: 상세 로그 기록 및 자동 건너뛰기
-
-- **상태 모니터링 이벤트**
-  - `stalled`: 동영상 로드 중단 감지
-  - `suspend`: 동영상 일시 중지 감지
-  - 디버그 모드(`debugToConsole: true`)에서 상세 로그 출력
-
-## EXIF 정보 표시 기능
-사진의 EXIF 정보를 읽어와 화면 우측 하단에 표시하는 기능입니다. 표시되는 정보는 다음과 같습니다.
--   💾 **파일명**
--   🗓️ **촬영일**: `YYYY-MM-DD HH:MM` 형식
--   📍 **위치 (GPS)**: 리버스 지오코딩을 통해 주소로 변환
--   📷 **카메라 모델**
--   ⚙️ **상세 촬영 정보**: 초점거리, 조리개, 셔터속도, ISO
--   ✨ **사진 효과**: 현재 적용된 애니메이션 효과 이름 및 감지된 얼굴 수 (예: `ip-face-pan-zoom-in (1👤)`)
-
-## 업로드 서버 (`uploadServer`)
-모바일 기기 등에서 사진 및 비디오를 쉽게 업로드하고 관리할 수 있도록 내장된 웹 서버입니다. 이 서버는 `uploadServer` 폴더 내에서 독립적으로 실행되며, 다음과 같은 모듈화된 구조를 가집니다.
-
-### 프로젝트 구조
-`uploadServer`는 유지보수성과 확장성을 높이기 위해 기능별로 파일이 분리되어 있습니다.
-
-```
-uploadServer/
-├── index.js              # Express 서버 초기 설정 및 라우터 연결
-├── routes/
-│   ├── main.js           # 메인 페이지(`/`) 및 파일 업로드(`/upload`) 라우트
-│   └── management.js     # 폴더/사진 관리(`/manage/...`) 라우트
-├── lib/
-│   ├── file-utils.js     # 파일/폴더 생성, 이름 변경, 삭제 등 파일 시스템 관련 유틸리티
-│   ├── process-utils.js  # PM2 재시작 등 외부 프로세스 실행 유틸리티
-│   └── view-renderer.js  # HTML 템플릿 렌더링 유틸리티
-└── views/
-    ├── index.html        # 메인 업로드 페이지 템플릿
-    └── manage-photos.html # 사진 관리 페이지 템플릿
-```
-
-### 주요 컴포넌트 설명
-- **`index.js`**: Express 앱을 생성하고, 필요한 미들웨어(body-parser, multer, static)를 설정한 후, `routes` 폴더의 라우터들을 각각의 경로에 연결합니다. 서버 실행의 진입점 역할을 합니다.
-- **`routes/`**: URL 경로별 요청을 처리하는 라우팅 로직을 담습니다. `main.js`는 사용자에게 처음 보여지는 페이지와 파일 업로드를, `management.js`는 파일 및 폴더의 상세 관리를 담당합니다.
-- **`lib/`**: 애플리케이션 전반에서 사용되는 공통 기능들을 모아놓은 유틸리티 폴더입니다. 파일 시스템 제어, 프로세스 실행, HTML 뷰 렌더링 등 재사용 가능한 함수들이 포함됩니다.
-- **`views/`**: 사용자에게 보여지는 HTML 페이지의 템플릿을 보관합니다. `view-renderer.js`는 이 템플릿에 동적 데이터를 채워넣어 최종 HTML을 생성합니다.
-
-이러한 구조를 통해 각 파일은 명확한 단일 책임(Single Responsibility)을 가지게 되어 코드 이해와 수정이 용이합니다.
-
-## 성능 고려사항
-- **"Next Up" 데이터 로딩**: 모듈은 초기 로딩 속도 향상을 위해 "Next Up" 패턴을 사용합니다.
-  1. 시작 시, 전체 사진 목록(경로)만 빠르게 가져옵니다.
-  2. 현재 사진을 표시하는 동안, 다음에 표시될 사진의 메타데이터(EXIF, GPS, 얼굴)를 백그라운드에서 미리 요청하고 처리합니다.
-  3. 이 방식을 통해 초기 로딩 지연 없이 슬라이드쇼를 즉시 시작하고, 각 사진이 표시될 때 필요한 모든 정보를 사용할 수 있습니다.
-- **애니메이션**: `will-change`, `transform`, `opacity`를 활용하여 GPU 가속을 유도하고 레이어 생성 비용을 줄입니다.
-- **저사양 환경**: Raspberry Pi 등 저사양 환경에서는 `config.js`에서 효과 개수를 줄이거나 `updateInterval`을 늘려 부하를 조절하는 것이 좋습니다.
-- **비디오 필터링**: `enableVideoPlayback: false`로 설정하면 동영상 파일이 필터링되어 이미지 파일만 표시되므로, 비디오 인코딩 오버헤드를 줄일 수 있습니다.
-
-## 테스트 및 디버깅
-- **상태 관리**: "Next Up" 아키텍처에서 렌더링 간 데이터가 섞이는 문제를 방지하기 위해, `getDom()` 함수에서 현재 표시할 사진 객체(`currentPhoto`)를 깊은 복사(`JSON.parse(JSON.stringify(...))`)하여 사용합니다. 이는 잠재적인 Race Condition을 방지하는 핵심적인 방어 로직입니다.
-- **로그**: `config.js`에서 `debugToConsole: true`로 설정 시, 데이터 흐름과 상태 변화에 대한 상세한 로그를 브라우저 개발자 콘솔에서 확인할 수 있습니다.
-- **CORS**: 외부 URL 이미지 사용 시, 브라우저 개발자 도구의 콘솔에서 `cross-origin` 관련 오류가 발생하는지 확인해야 합니다.
-
-## Git / 커밋 규칙
-- 브랜치: `feature/<짧은-설명>`, `fix/<이슈-번호>-desc`.
-- 커밋 메시지: `type(scope): subject` 스타일 권장 (예: `feat(images): add average-color background`).
-- 작은 단위의 커밋으로 가독성을 높일 것.
-
-## 참고
-- 프로젝트 루트의 ESLint/Prettier 설정을 따르세요.
-- 관련 파일: `MMM-ImagesPhotos.js`, `MMM-ImagesPhotos.css`, `node_helper.js`.
+*마지막 수정일: 2026-11-24*
 
 ---
-*Vibe-coding과 Gemini가 함께 생성했습니다*
+
+## 1. 모듈 전체 구성
+
+```text
+MMM-ImagesPhotos/
+├── MMM-ImagesPhotos.js       # 프론트엔드 슬라이드쇼, 셔플 덱, 콜라주, 리모컨, EXIF/QR 렌더링
+├── MMM-ImagesPhotos.css      # 애니메이션, 콜라주 그리드, 유리 질감(.exif-info/.mmip-*)
+├── node_helper.js            # 미디어 스캔, 영구 캐시, EXIF/GPS/얼굴인식, 내부 제어 HTTP API
+├── clean_names.py            # 업로드 파일/폴더명 정규화 (스크립트 위치 기준 uploads/ 자동 탐색)
+├── clean_extensions.sh       # 비미디어 잔여 파일 정리 (--dry-run 지원, 동영상 보호)
+├── convert_videos.sh         # ffmpeg 기반 동영상 최적화 (h264/yuv420p/720p)
+├── start-upload-server.sh    # PM2 프로덕션 실행 스크립트 (--watch 옵션 지원, 메모리 상한 300M)
+├── sync_mirror_upload.sh     # rclone 구글 포토 동기화 보조 스크립트
+├── .cache/                   # (Git 제외) 영구 JSON 캐시 및 360px 썸네일 저장소
+│   ├── face-detection-cache.json
+│   ├── geocode-cache.json
+│   ├── exif-date-cache.json
+│   ├── dimensions-cache.json
+│   └── thumbs/
+└── uploadServer/             # 독립 모바일 웹 서버 (포트 8999, PM2: mmm-images-upload-server)
+    ├── index.js              # Express 진입점, /qr(로컬 PNG), /thumb/*(360px 캐시), /uploads
+    ├── routes/
+    │   ├── main.js           # 메인 페이지(/), 다중 업로드(/upload, HEIC->JPG, 비동기 동영상 큐)
+    │   └── management.js     # 폴더/사진 관리(/manage/*), 리모컨(/manage/api/remote), 대시보드(/manage/api/system-status)
+    ├── lib/
+    │   ├── file-utils.js     # 폴더/파일 목록, 보이기/숨기기(!접두사), 삭제 유틸
+    │   ├── process-utils.js  # 무중단 목록 갱신(notifyMagicMirrorRefresh), MagicMirror API 호출, PM2 재시작
+    │   ├── thumb-utils.js    # Pillow 기반 360px JPEG 썸네일 비동기 생성(동시 4워커) & SHA-1 캐싱
+    │   ├── video-queue.js    # 동영상 백그라운드 순차 변환 큐 & 완료 시 무중단 갱신
+    │   └── view-renderer.js  # HTML 템플릿({{placeholder}}) 렌더러
+    └── views/
+        ├── index.html        # 리모컨 + 업로드 + 시스템 상태 대시보드 + 폴더 관리
+        └── manage-photos.html # 폴더별 사진/동영상 썸네일 그리드 + 전체화면 미리보기
+```
+
+---
+
+## 2. 확정된 UX / 동작 규칙 (임의 변경 주의)
+
+### 화면 전환 & 애니메이션
+- **기본 전환 모드 (`transitionMode: "black"`)**:
+  - `검정 화면(1.0초) → 페이드인(1.5초) → 표시(updateInterval) → 페이드아웃(1.5초)`
+  - 풀스크린 모드에서는 `updateDom(0)`을 사용해 고정 QR 오버레이(`.mmip-overlay-root`)가 깜빡이지 않도록 유지
+  - `config.js`에서 `transitionMode: "crossfade"`로 전환 가능
+- **정지 vs 움직임 비율 (`stillProbability: 0.25`)**:
+  - 모든 사진에 대해 **25% `ip-still`**, **75% 움직이는 팬/줌 효과** 적용
+  - 모든 이동·확대 효과는 과도한 움직임을 막기 위해 **15% (`scale(1.15)` / `translate(15%)`) 이내**로 제한
+  - 지속 시간은 `20초 ~ 40초` 사이 무작위
+  - `ip-zoom-pan*`은 `1.05x → 1.15x` 확대와 이동이 동시에 동작
+- **셔플 덱 (중복 없는 랜덤)**:
+  - `sequential: false`일 때 Fisher-Yates 셔플 덱으로 한 바퀴를 중복 없이 순회 후 재셔플
+  - "N년 전 오늘" 사진(`memoryYearsAgo >= 1`)은 덱 앞쪽에 최대 2장 우선 배치
+
+### 방향 자동 대응 2장 콜라주 (`enablePortraitCollage: true`, `collageProbability: 0.5`)
+- 모니터 방향과 반대 비율의 사진이 나올 때 **50% 확률**로 2장을 짝지어 표시하고, 50%는 1장 단독 표시
+  - **세로 모니터 (`1080×1920`, 현재 실제 환경)**: 가로 사진 2장을 **상·하 2단(`mmip-collage-vertical`)** 배치
+  - **가로 모니터 (`1920×1080`)**: 세로 사진 2장을 **좌·우 2열(`mmip-collage-horizontal`)** 배치
+
+### 메타정보 박스 (`.exif-info`)
+- 위치: 우측 하단 (`bottom: 16px; right: 16px`), 반투명 유리 질감, **텍스트 왼쪽 정렬(`text-align: left`)**
+- EXIF 태그나 애니메이션 효과가 비어 있어도 인식된 정보는 누락 없이 항상 표시:
+  - `🎂 N년 전 오늘` (EXIF 촬영월일이 오늘과 일치 시)
+  - `🗓️ YYYY-MM-DD HH:MM`
+  - `📍 위치` — 한국 주소는 큰 단위 → 작은 단위 공백 구분, `대한민국` 생략 (예: `경기도 군포시 군포1동 한세로56번길`), 해외는 국가 포함
+  - `📷 카메라 모델` / `⚙️ 초점거리·조리개·셔터·ISO`
+  - `✨ 효과명 (N👤)` (얼굴 검출 시 인원수 표시)
+
+### 미디어 포맷 & 숨김 규칙
+- `!`로 시작하는 폴더/파일은 슬라이드쇼에서 숨김 처리 (`node_helper.js` `getFiles()`)
+- 지원 MIME (`node_helper.js` `getImages()`): `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `image/heic`, `video/mp4`, `video/webm`, `video/ogg`, `video/quicktime`
+- 아이폰 `.heic`/`.heif` 업로드 시 `uploadServer`에서 `heic-convert`로 `.jpg` 자동 변환
+
+---
+
+## 3. 영구 캐시 & 성능 설계
+
+- **Next Up 프리패치**: 현재 사진 표시 중 다음 사진의 EXIF/GPS/얼굴 검출을 백그라운드에서 선행 처리
+- **영구 JSON 캐시** (`.cache/`, 3초 디바운스 + `.tmp`→`rename` 원자적 저장, `stop()` 시 플러시):
+  - `face-detection-cache.json`: 파일 `mtimeMs`/`size` 기준 캐시 (히트 시 `~1ms`, 15초 타임아웃 보호)
+  - `geocode-cache.json`: 소수점 4자리 좌표+언어 키 캐시 (Nominatim 재호출 방지, 10초 타임아웃 보호)
+  - `exif-date-cache.json`: EXIF 촬영 연·월·일 캐시 ("N년 전 오늘" 판별용)
+  - `dimensions-cache.json`: 앞 64KB 헤더 고속 스캔(425장 약 116ms) 결과 캐시 (콜라주 가로/세로 즉시 판별)
+- **리소스 누수 방지**: 전환/일시중지 시 `clearFadeTimers()` 및 `cleanupFaceStyles()`로 이전 타이머·동적 `<style>` 자동 정리
+
+---
+
+## 4. 내부 제어 API (`http://localhost:8080/MMM-ImagesPhotos/api/*`)
+
+MagicMirror 프로세스(`node_helper.js`)가 로컬 전용 제어 API를 제공합니다.
+
+| 메서드/경로 | 동작 |
+| --- | --- |
+| `GET /MMM-ImagesPhotos/api/status` | 실행 인스턴스, 일시정지 여부, 현재 표시 사진(`currentPhoto`), 각 캐시 개수 반환 |
+| `POST /MMM-ImagesPhotos/api/refresh` | `PHOTOS_UPDATED` 소켓 브로드캐스트 (재시작 없는 무중단 목록 갱신) |
+| `POST /MMM-ImagesPhotos/api/control` | `{ "action": "next" \| "pause" \| "resume" \| "toggle-pause" }` 실시간 제어 |
+| `POST /MMM-ImagesPhotos/api/hide-current` | 현재 표시 중인 사진 파일명에 `!` 접두사 부여 후 목록 갱신 + 다음 사진 전환 |
+
+### 무중단 갱신 & 야간 보호 정책 (`uploadServer/lib/process-utils.js`)
+- 파일/폴더 변경 시 `notifyMagicMirrorRefresh()` 호출:
+  - `pm2 pid mm`이 실행 중이면 `POST http://localhost:8080/MMM-ImagesPhotos/api/refresh`만 호출 (Electron 재시작 없음)
+  - `mm`이 중지 상태(야간 `screen-off`)이면 `mm`을 깨우지 않고 그대로 스킵 (다음 `screen-on` 시 자동 반영)
+- `restartMagicMirror()`는 웹 UI의 수동 "🔄 MagicMirror 재시작" 버튼에서만 사용
+
+---
+
+## 5. 개발 시 필수 주의사항 (Gotchas)
+
+1. **`localhost` vs `127.0.0.1` (IPv6 바인딩)**:
+   - Debian 12 + Node 24 환경에서 MagicMirror `address: "localhost"`는 `[::1]:8080`(IPv6)에 바인딩됩니다. 내부 API 호출 시 반드시 `localhost`를 사용하세요 (`127.0.0.1` 사용 시 `ECONNREFUSED`).
+2. **`getScripts()`에 CSS 넣지 않기**:
+   - CSS는 `getStyles()`에서만 반환하고 `getScripts()`는 `[]` 유지.
+3. **로컬 QR 코드**:
+   - 외부 `api.qrserver.com` 대신 `http://<serverIp>:8999/qr?data=...` 사용 (오프라인 호환).
+4. **Git 커밋 규칙**:
+   - `type(scope): subject` 형식 권장 (예: `feat(collage): ...`, `fix(ui): ...`, `chore(ops): ...`).
+   - `.cache/`, `.temp-uploads/`, `uploads/`, `node_modules/`는 `.gitignore`에 의해 제외됨.
