@@ -51,6 +51,7 @@ Module.register(ourModuleName, {
   wrapper: null,
   suspended: false,
   timer: null,
+  fadeTimers: [],
   fullscreen: false,
   photos: [],
   currentPhoto: null,
@@ -515,6 +516,29 @@ Module.register(ourModuleName, {
     video.src = photoImage.url;
   },
 
+  clearFadeTimers() {
+    if (Array.isArray(this.fadeTimers)) {
+      this.fadeTimers.forEach((id) => clearTimeout(id));
+      this.fadeTimers = [];
+    }
+  },
+
+  scheduleFadeTimer(fn, delay) {
+    const id = setTimeout(() => {
+      this.fadeTimers = this.fadeTimers.filter((t) => t !== id);
+      fn();
+    }, delay);
+    this.fadeTimers.push(id);
+    return id;
+  },
+
+  cleanupFaceStyles() {
+    if (typeof document === "undefined" || !document.head) return;
+    document.head.querySelectorAll("style[data-mmip-face-style='true']").forEach((el) => {
+      el.remove();
+    });
+  },
+
   animateTransition(imgEl, container) {
     const self = this;
     const cfg = self.config || {};
@@ -538,7 +562,8 @@ Module.register(ourModuleName, {
 
     if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: black=${blackDuration} fade=${fadeDuration} display=${displayDuration} easing=${easing}`);
 
-    // Schedule next update after this animation completes
+    // Clear any stale fade timers from a previous image and schedule next update
+    self.clearFadeTimers();
     if (self.timer) clearTimeout(self.timer);
     const nextUpdateDelay = blackDuration + fadeDuration + displayDuration + fadeDuration;
     self.waitForNextPhotoAndUpdate(nextUpdateDelay);
@@ -552,13 +577,13 @@ Module.register(ourModuleName, {
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
       
       // After blackDuration, fade IN the foreground container
-      setTimeout(() => {
+      self.scheduleFadeTimer(() => {
         if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: fading in`);
         fgContainer.style.opacity = 1;
       }, blackDuration);
 
       // After display duration, fade OUT the foreground container
-      setTimeout(() => {
+      self.scheduleFadeTimer(() => {
         if (self.config.debugToConsole) Log.log(`${this.name}: animateTransition: starting fade-out`);
         fgContainer.style.opacity = 0;
       }, blackDuration + fadeDuration + displayDuration);
@@ -567,6 +592,8 @@ Module.register(ourModuleName, {
 
   suspend() {
     this.suspended = true;
+    this.clearFadeTimers();
+    this.cleanupFaceStyles();
     if (this.timer !== null) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -594,6 +621,10 @@ Module.register(ourModuleName, {
 		wrapper.className = "dimmed light small";
 		return wrapper;
 	}
+
+    // Clear stale timers and dynamic face-zoom styles before rendering next photo
+    this.clearFadeTimers();
+    this.cleanupFaceStyles();
 
     // Promote next photo to current and prepare the next one in the background
     this.currentPhoto = JSON.parse(JSON.stringify(this.nextPhoto)); // Deep copy to prevent race conditions
@@ -631,18 +662,15 @@ Module.register(ourModuleName, {
       fg.style.opacity = 0; // start invisible
       wrapper.appendChild(fg);
 
-      // --- Fade In Transition ---
-      // Common fade-in logic for both video and image
-      const blackDuration = this.transitionDefaults.blackDuration;
-      const fadeDuration = this.transitionDefaults.fadeDuration;
       fg.style.backgroundColor = "black";
-      setTimeout(() => {
-        fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
-        fg.style.opacity = 1;
-      }, blackDuration);
-      // --- End Fade In ---
 
       if (this.isVideo(photoImage)) {
+        const blackDuration = this.transitionDefaults.blackDuration;
+        const fadeDuration = this.transitionDefaults.fadeDuration;
+        this.scheduleFadeTimer(() => {
+          fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
+          fg.style.opacity = 1;
+        }, blackDuration);
         // --- VIDEO LOGIC ---
         const video = document.createElement("video");
         video.className = "mmip-video";
@@ -702,6 +730,7 @@ Module.register(ourModuleName, {
               }
             `;
             const styleEl = document.createElement("style");
+            styleEl.setAttribute("data-mmip-face-style", "true");
             styleEl.innerHTML = keyframe;
             document.head.appendChild(styleEl);
             img.style.animation = `${keyframeName} ${duration}s ease-in-out both`;
@@ -859,16 +888,13 @@ Module.register(ourModuleName, {
         }
         self.fg.style.opacity = 0;
 
-        // --- Fade In Transition ---
-        const blackDuration = this.transitionDefaults.blackDuration;
-        const fadeDuration = this.transitionDefaults.fadeDuration;
-        setTimeout(() => {
-          self.fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
-          self.fg.style.opacity = 1;
-        }, blackDuration);
-        // --- End Fade In ---
-
         if (this.isVideo(photoImage)) {
+          const blackDuration = this.transitionDefaults.blackDuration;
+          const fadeDuration = this.transitionDefaults.fadeDuration;
+          this.scheduleFadeTimer(() => {
+            self.fg.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
+            self.fg.style.opacity = 1;
+          }, blackDuration);
           // --- VIDEO LOGIC (FS) ---
           const video = document.createElement("video");
           video.className = "mmip-video"; // Use the new video class
@@ -980,7 +1006,7 @@ Module.register(ourModuleName, {
   },
 
   getScripts() {
-    return ["MMM-ImagesPhotos.css"];
+    return [];
   },
 
   processPhotos(data) {
