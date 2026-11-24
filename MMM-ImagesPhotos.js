@@ -308,21 +308,31 @@ Module.register(ourModuleName, {
     return chosen;
   },
 
-  pickPortraitCompanion(primaryPhoto) {
+  pickCollageCompanion(primaryPhoto) {
     if (!this.config.enablePortraitCollage || !this.fullscreen) return null;
-    if (window.innerWidth <= window.innerHeight) return null;
     if (!primaryPhoto || this.isVideo(primaryPhoto)) return null;
 
+    const isScreenPortrait = window.innerHeight > window.innerWidth;
     const isPrimaryPortrait = this.isPhotoPortrait(primaryPhoto);
-    if (!isPrimaryPortrait) return null;
 
-    // Look in the upcoming deck for another known portrait image
+    // 세로 모니터(1080x1920) -> 가로 사진 2장을 상하 2단 콜라주
+    // 가로 모니터(1920x1080) -> 세로 사진 2장을 좌우 2열 콜라주
+    const needPortraitPair = !isScreenPortrait;
+    if (isPrimaryPortrait !== needPortraitPair) return null;
+
     if (this.photoDeck && this.photoDeck.length > 0) {
       const idx = this.photoDeck.findIndex(
-        (p) => p.path !== primaryPhoto.path && !this.isVideo(p) && p.isPortrait === true
+        (p) =>
+          p.path !== primaryPhoto.path &&
+          !this.isVideo(p) &&
+          typeof p.isPortrait === "boolean" &&
+          p.isPortrait === needPortraitPair
       );
       if (idx !== -1) {
-        return this.photoDeck.splice(idx, 1)[0];
+        return {
+          photo: this.photoDeck.splice(idx, 1)[0],
+          layout: isScreenPortrait ? "vertical" : "horizontal"
+        };
       }
     }
     return null;
@@ -944,16 +954,17 @@ Module.register(ourModuleName, {
           this.bk.style.backgroundColor = "black";
         }
       } else {
-        const companion = this.pickPortraitCompanion(photoImage);
+        const collageMatch = this.pickCollageCompanion(photoImage);
 
-        if (companion) {
-          // --- PORTRAIT 2-UP COLLAGE ---
+        if (collageMatch) {
+          // --- ORIENTATION-AWARE 2-UP COLLAGE ---
+          const companion = collageMatch.photo;
           photoImage.companion = companion;
           const grid = document.createElement("div");
-          grid.className = "mmip-collage-grid";
+          grid.className = `mmip-collage-grid mmip-collage-${collageMatch.layout}`;
 
           const picked = this.pickRegularEffect();
-          photoImage.effect = `collage · ${picked.effectClass}`;
+          photoImage.effect = `collage-${collageMatch.layout} · ${picked.effectClass}`;
 
           const pair = [photoImage, companion];
           let loadedCount = 0;
@@ -964,7 +975,8 @@ Module.register(ourModuleName, {
             cell.className = "mmip-collage-cell";
             const img = document.createElement("img");
             const eff = idx === 0 ? picked : this.pickRegularEffect();
-            img.className = `bgimage mmip-bgimage mmip-collage-img portrait ${eff.effectClass}`;
+            const orientCls = collageMatch.layout === "vertical" ? "landscape" : "portrait";
+            img.className = `bgimage mmip-bgimage mmip-collage-img ${orientCls} ${eff.effectClass}`;
             img.style.animationDuration = eff.duration;
             img.style.opacity = self.config.opacity;
             try { img.crossOrigin = "Anonymous"; } catch (e) {}

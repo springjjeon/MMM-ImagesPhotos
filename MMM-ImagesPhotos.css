@@ -44,16 +44,25 @@
   pointer-events: none;
 }
 
-/* Portrait 2-up Collage Layout */
+/* Orientation-Aware 2-up Collage Layout */
 .MMM-ImagesPhotos .mmip-collage-grid {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 10px;
-  padding: 8px;
+  padding: 10px;
   box-sizing: border-box;
   background-color: black;
+}
+
+.MMM-ImagesPhotos .mmip-collage-grid.mmip-collage-horizontal {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.MMM-ImagesPhotos .mmip-collage-grid.mmip-collage-vertical {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
 }
 
 .MMM-ImagesPhotos .mmip-collage-cell {

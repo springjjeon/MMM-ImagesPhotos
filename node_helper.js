@@ -21,6 +21,7 @@ const CACHE_DIR = path.join(__dirname, ".cache");
 const FACE_CACHE_FILE = path.join(CACHE_DIR, "face-detection-cache.json");
 const GEOCODE_CACHE_FILE = path.join(CACHE_DIR, "geocode-cache.json");
 const DATE_CACHE_FILE = path.join(CACHE_DIR, "exif-date-cache.json");
+const DIM_CACHE_FILE = path.join(CACHE_DIR, "dimensions-cache.json");
 const CACHE_SAVE_DEBOUNCE_MS = 3000;
 const FACE_SCRIPT_TIMEOUT_MS = 15000;
 const GEOCODE_TIMEOUT_MS = 10000;
@@ -51,6 +52,40 @@ function saveJsonCacheAtomic(filePath, data) {
 	} catch (err) {
 		console.error(`[MMM-ImagesPhotos] Failed to save cache ${path.basename(filePath)}: ${err.message}`);
 	}
+}
+
+function readImageDimensionsFast(filePath) {
+	try {
+		const ext = path.extname(filePath).toLowerCase();
+		if (ext === ".png") {
+			const fd = fs.openSync(filePath, "r");
+			const buf = Buffer.alloc(24);
+			fs.readSync(fd, buf, 0, 24, 0);
+			fs.closeSync(fd);
+			if (buf.toString("ascii", 1, 4) === "PNG") {
+				return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+			}
+			return null;
+		}
+		if (ext === ".jpg" || ext === ".jpeg") {
+			const fd = fs.openSync(filePath, "r");
+			const buf = Buffer.alloc(65536);
+			fs.readSync(fd, buf, 0, 65536, 0);
+			fs.closeSync(fd);
+			const parsed = exifParser.create(buf).parse();
+			const sz = parsed.getImageSize();
+			if (sz && sz.width && sz.height) {
+				const orient = (parsed.tags && parsed.tags.Orientation) || 1;
+				const rotated = orient >= 5 && orient <= 8;
+				return rotated
+					? { width: sz.height, height: sz.width }
+					: { width: sz.width, height: sz.height };
+			}
+		}
+	} catch (_) {
+		// ignore
+	}
+	return null;
 }
 
 function computeMemoryYearsAgo(year, month, day) {
@@ -109,9 +144,11 @@ module.exports = NodeHelper.create({
 	faceCache: {},
 	geocodeCache: {},
 	dateCache: {},
+	dimCache: {},
 	faceCacheSaveTimer: null,
 	geocodeCacheSaveTimer: null,
 	dateCacheSaveTimer: null,
+	dimCacheSaveTimer: null,
 	activeInstances: new Set(),
 	currentDisplayed: {},
 	pausedState: false,
@@ -176,6 +213,16 @@ module.exports = NodeHelper.create({
 		}, CACHE_SAVE_DEBOUNCE_MS);
 	},
 
+	scheduleSaveDimCache() {
+		if (this.dimCacheSaveTimer) {
+			clearTimeout(this.dimCacheSaveTimer);
+		}
+		this.dimCacheSaveTimer = setTimeout(() => {
+			this.dimCacheSaveTimer = null;
+			saveJsonCacheAtomic(DIM_CACHE_FILE, this.dimCache);
+		}, CACHE_SAVE_DEBOUNCE_MS);
+	},
+
 	scheduleSaveDateCache() {
 		if (this.dateCacheSaveTimer) {
 			clearTimeout(this.dateCacheSaveTimer);
@@ -201,6 +248,11 @@ module.exports = NodeHelper.create({
 			clearTimeout(this.dateCacheSaveTimer);
 			this.dateCacheSaveTimer = null;
 			saveJsonCacheAtomic(DATE_CACHE_FILE, this.dateCache);
+		}
+		if (this.dimCacheSaveTimer) {
+			clearTimeout(this.dimCacheSaveTimer);
+			this.dimCacheSaveTimer = null;
+			saveJsonCacheAtomic(DIM_CACHE_FILE, this.dimCache);
 		}
 	},
 
@@ -299,6 +351,7 @@ module.exports = NodeHelper.create({
 		this.faceCache = loadJsonCache(FACE_CACHE_FILE);
 		this.geocodeCache = loadJsonCache(GEOCODE_CACHE_FILE);
 		this.dateCache = loadJsonCache(DATE_CACHE_FILE);
+		this.dimCache = loadJsonCache(DIM_CACHE_FILE);
 		this.activeInstances = new Set();
 		this.currentDisplayed = {};
 		this.pausedState = false;
@@ -525,14 +578,33 @@ module.exports = NodeHelper.create({
 		const imgs = this.getImages(this.getFiles(directoryImages, id), id);
 		console.log(`[MMM-ImagesPhotos] Loaded ${imgs.length} media files (${id})`);
 
+		let dimUpdated = false;
 		const initialPhotos = imgs.map((img) => {
 			const entry = {
 				url: `/MMM-ImagesPhotos/photo/${id}/${img}`,
 				path: img
 			};
+			const fullPath = path.join(directoryImages, img);
 			const fc = this.faceCache[img];
 			if (fc && fc.face && fc.face.width && fc.face.height) {
 				entry.isPortrait = fc.face.height > fc.face.width;
+			} else {
+				try {
+					const st = fs.statSync(fullPath);
+					const cachedDim = this.dimCache[img];
+					if (cachedDim && cachedDim.mtimeMs === st.mtimeMs && cachedDim.size === st.size) {
+						entry.isPortrait = cachedDim.height > cachedDim.width;
+					} else {
+						const dims = readImageDimensionsFast(fullPath);
+						if (dims && dims.width && dims.height) {
+							this.dimCache[img] = { mtimeMs: st.mtimeMs, size: st.size, width: dims.width, height: dims.height };
+							dimUpdated = true;
+							entry.isPortrait = dims.height > dims.width;
+						}
+					}
+				} catch (_) {
+					// ignore
+				}
 			}
 			const dc = this.dateCache[img];
 			if (dc && dc.year && dc.month && dc.day) {
@@ -543,6 +615,9 @@ module.exports = NodeHelper.create({
 			}
 			return entry;
 		});
+		if (dimUpdated) {
+			this.scheduleSaveDimCache();
+		}
 		res.send(initialPhotos);
 	},
 
