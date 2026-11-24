@@ -31,6 +31,15 @@
         .remote-btn.danger { background: #dc3545; }
         .remote-btn.success { background: #28a745; }
         .remote-btn.dark { background: #343a40; }
+        .remote-btn.purple { background: #7048e8; }
+        .remote-btn.purple.active { background: #2b8a3e; }
+
+        /* Playback Filter Box */
+        .filter-box { margin-top: 12px; padding: 12px 14px; background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; }
+        .filter-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .filter-pill { padding: 7px 11px; border: 1px solid #d0d7e2; background: #fff; color: #333; border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+        .filter-pill.active { background: #007bff; color: #fff; border-color: #007bff; }
+        .filter-folder-select { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 7px; font-size: 13px; display: none; }
 
         /* Brightness Box */
         .brightness-box { margin-top: 14px; padding: 12px 14px; background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; }
@@ -80,9 +89,23 @@
             <button type="button" class="remote-btn primary" onclick="sendRemote('next')">⏭️ 다음 사진</button>
             <button type="button" class="remote-btn warning" id="pause-btn" onclick="sendRemote('toggle-pause')">⏯️ 일시정지</button>
             <button type="button" class="remote-btn gold" id="fav-btn" onclick="sendRemote('toggle-favorite')">⭐ 즐겨찾기</button>
+            <button type="button" class="remote-btn purple" id="gallery-btn" onclick="toggleGalleryMode()">🖼️ 갤러리 모드</button>
             <button type="button" class="remote-btn danger" onclick="hideCurrentPhoto()">🙈 현재 숨기기</button>
             <button type="button" class="remote-btn success" onclick="sendRemote('screen-on')">📺 화면 켜기</button>
             <button type="button" class="remote-btn dark" onclick="sendRemote('screen-off')">🌙 화면 끄기</button>
+        </div>
+
+        <!-- 재생 필터 모드 -->
+        <div class="filter-box">
+            <div style="font-size: 13px; font-weight: 600; color: #333;">🎯 재생 필터 (계절·이맘때 추억 자동 가중치 적용)</div>
+            <div class="filter-pills" id="filter-pills">
+                <button type="button" class="filter-pill" data-mode="all" onclick="setFilterMode('all')">전체</button>
+                <button type="button" class="filter-pill" data-mode="favorites" onclick="setFilterMode('favorites')">⭐ 즐겨찾기만</button>
+                <button type="button" class="filter-pill" data-mode="faces" onclick="setFilterMode('faces')">👤 인물만</button>
+                <button type="button" class="filter-pill" data-mode="videos" onclick="setFilterMode('videos')">🎬 동영상만</button>
+                <button type="button" class="filter-pill" data-mode="folder" onclick="setFilterMode('folder')">📁 폴더 선택</button>
+            </div>
+            <select id="filter-folder-select" class="filter-folder-select" onchange="setFilterFolder(this.value)"></select>
         </div>
 
         <!-- 화면 밝기 제어 -->
@@ -153,6 +176,73 @@
     {{folderListHtml}}
 
     <script>
+        let currentDisplayState = { galleryMode: false, filterMode: 'all', filterFolder: '' };
+        let knownVisibleFolders = [];
+
+        function renderDisplayStateUi() {
+            const gBtn = document.getElementById('gallery-btn');
+            if (gBtn) {
+                gBtn.classList.toggle('active', Boolean(currentDisplayState.galleryMode));
+                gBtn.textContent = currentDisplayState.galleryMode ? '🖼️ 위젯 보이기' : '🖼️ 갤러리 모드';
+            }
+            document.querySelectorAll('#filter-pills .filter-pill').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.mode === currentDisplayState.filterMode);
+            });
+            const sel = document.getElementById('filter-folder-select');
+            if (sel) {
+                sel.style.display = currentDisplayState.filterMode === 'folder' ? 'block' : 'none';
+                if (knownVisibleFolders.length > 0) {
+                    const prevVal = currentDisplayState.filterFolder || sel.value;
+                    sel.innerHTML = knownVisibleFolders
+                        .map((f) => `<option value="${f}" ${f === prevVal ? 'selected' : ''}>📁 ${f}</option>`)
+                        .join('');
+                }
+            }
+        }
+
+        async function updateDisplayState(patch, successMsg) {
+            const fb = document.getElementById('remote-feedback');
+            fb.textContent = '⏳ 적용 중...';
+            try {
+                const res = await fetch('/manage/api/display-state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(patch)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                currentDisplayState = {
+                    galleryMode: Boolean(data.galleryMode),
+                    filterMode: data.filterMode || 'all',
+                    filterFolder: data.filterFolder || ''
+                };
+                renderDisplayStateUi();
+                fb.textContent = successMsg;
+                setTimeout(loadSystemStatus, 800);
+            } catch (err) {
+                fb.textContent = `❌ 적용 실패: ${err.message}`;
+            }
+        }
+
+        function toggleGalleryMode() {
+            const next = !currentDisplayState.galleryMode;
+            updateDisplayState({ galleryMode: next }, next ? '🖼️ 갤러리 전용 모드 ON (모든 위젯 숨김)' : '🖼️ 일반 모드로 복귀했습니다.');
+        }
+
+        function setFilterMode(mode) {
+            if (mode === 'folder') {
+                const folder = currentDisplayState.filterFolder || knownVisibleFolders[0] || '';
+                updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터 적용: ${folder || '(없음)'}`);
+            } else {
+                const names = { all: '전체', favorites: '⭐ 즐겨찾기만', faces: '👤 인물만', videos: '🎬 동영상만' };
+                updateDisplayState({ filterMode: mode }, `🎯 재생 필터 변경: ${names[mode] || mode}`);
+            }
+        }
+
+        function setFilterFolder(folder) {
+            updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터 변경: ${folder}`);
+        }
+
         const brightnessSlider = document.getElementById('brightness-slider');
         const brightnessVal = document.getElementById('brightness-val');
 
@@ -197,6 +287,14 @@
                 document.getElementById('st-temp').textContent = data.cpuTempC !== null ? `${data.cpuTempC}°C` : '-';
                 document.getElementById('st-mem').textContent = `${data.memory.percent}% (${data.memory.usedMB}MB)`;
                 document.getElementById('st-disk').textContent = data.disk ? `${data.disk.avail} (${data.disk.percent})` : '-';
+
+                if (Array.isArray(data.visibleFolders)) {
+                    knownVisibleFolders = data.visibleFolders;
+                }
+                if (data.displayState) {
+                    currentDisplayState = data.displayState;
+                    renderDisplayStateUi();
+                }
 
                 if (typeof data.brightness === 'number') {
                     brightnessSlider.value = data.brightness;

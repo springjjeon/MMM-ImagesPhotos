@@ -24,6 +24,7 @@ const DATE_CACHE_FILE = path.join(CACHE_DIR, "exif-date-cache.json");
 const DIM_CACHE_FILE = path.join(CACHE_DIR, "dimensions-cache.json");
 const FAVORITES_FILE = path.join(CACHE_DIR, "favorites.json");
 const BRIGHTNESS_FILE = path.join(CACHE_DIR, "brightness.json");
+const DISPLAY_STATE_FILE = path.join(CACHE_DIR, "display-state.json");
 const CACHE_SAVE_DEBOUNCE_MS = 3000;
 const FACE_SCRIPT_TIMEOUT_MS = 15000;
 const GEOCODE_TIMEOUT_MS = 10000;
@@ -128,15 +129,57 @@ function loadFavoritesSet() {
 	return new Set();
 }
 
-function computeMemoryYearsAgo(year, month, day) {
+function getSeason(month) {
+	if (month >= 3 && month <= 5) return "spring";
+	if (month >= 6 && month <= 8) return "summer";
+	if (month >= 9 && month <= 11) return "autumn";
+	return "winter";
+}
+
+function computeSeasonalMemory(year, month, day) {
 	const now = new Date();
 	const todayYear = now.getFullYear();
 	const todayMonth = now.getMonth() + 1;
 	const todayDay = now.getDate();
-	if (month === todayMonth && day === todayDay && todayYear > year) {
-		return todayYear - year;
+
+	const isSameSeason = getSeason(month) === getSeason(todayMonth);
+	let memoryYearsAgo = 0;
+	let nearMemoryYearsAgo = 0;
+
+	if (todayYear > year) {
+		if (month === todayMonth && day === todayDay) {
+			memoryYearsAgo = todayYear - year;
+		} else {
+			const todayUtc = Date.UTC(todayYear, todayMonth - 1, todayDay);
+			const candidates = [
+				Date.UTC(todayYear, month - 1, day),
+				Date.UTC(todayYear - 1, month - 1, day),
+				Date.UTC(todayYear + 1, month - 1, day)
+			];
+			const minDays = Math.min(...candidates.map((c) => Math.abs(todayUtc - c) / 86400000));
+			if (minDays <= 7) {
+				nearMemoryYearsAgo = todayYear - year;
+			}
+		}
 	}
-	return 0;
+	return { memoryYearsAgo, nearMemoryYearsAgo, isSameSeason };
+}
+
+function loadDisplayState() {
+	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "" };
+	try {
+		if (fs.existsSync(DISPLAY_STATE_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(DISPLAY_STATE_FILE, "utf8"));
+			if (parsed && typeof parsed === "object") {
+				return {
+					galleryMode: Boolean(parsed.galleryMode),
+					filterMode: ["all", "favorites", "faces", "videos", "folder"].includes(parsed.filterMode) ? parsed.filterMode : "all",
+					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : ""
+				};
+			}
+		}
+	} catch (_) {}
+	return defaults;
 }
 
 async function reverseGeocode(lat, lon, language) {
@@ -187,6 +230,7 @@ module.exports = NodeHelper.create({
 	dimCache: {},
 	favorites: new Set(),
 	brightness: 100,
+	displayState: { galleryMode: false, filterMode: "all", filterFolder: "" },
 	faceCacheSaveTimer: null,
 	geocodeCacheSaveTimer: null,
 	dateCacheSaveTimer: null,
@@ -396,6 +440,7 @@ module.exports = NodeHelper.create({
 		this.dimCache = loadJsonCache(DIM_CACHE_FILE);
 		this.favorites = loadFavoritesSet();
 		this.brightness = loadBrightnessValue();
+		this.displayState = loadDisplayState();
 		this.activeInstances = new Set();
 		this.currentDisplayed = {};
 		this.pausedState = false;
@@ -435,6 +480,7 @@ module.exports = NodeHelper.create({
 				currentPhoto,
 				favoriteCount: this.favorites.size,
 				brightness: this.brightness,
+				displayState: this.displayState,
 				faceCacheCount: Object.keys(this.faceCache).length,
 				geocodeCacheCount: Object.keys(this.geocodeCache).length,
 				dateCacheCount: Object.keys(this.dateCache).length
@@ -514,6 +560,27 @@ module.exports = NodeHelper.create({
 			res.json({ ok: true, brightness: val });
 		});
 
+		this.expressApp.post("/MMM-ImagesPhotos/api/display-state", (req, res) => {
+			const body = req.body || {};
+			const next = { ...this.displayState };
+			if (typeof body.galleryMode === "boolean") {
+				next.galleryMode = body.galleryMode;
+			}
+			if (typeof body.filterMode === "string" && ["all", "favorites", "faces", "videos", "folder"].includes(body.filterMode)) {
+				next.filterMode = body.filterMode;
+			}
+			if (typeof body.filterFolder === "string") {
+				next.filterFolder = body.filterFolder;
+			}
+			this.displayState = next;
+			saveJsonCacheAtomic(DISPLAY_STATE_FILE, next);
+			Array.from(this.activeInstances).forEach((id) => {
+				this.sendSocketNotification("DISPLAY_STATE_UPDATED", { id, ...next });
+			});
+			console.log(`[MMM-ImagesPhotos] Display state updated:`, JSON.stringify(next));
+			res.json({ ok: true, ...next });
+		});
+
 		this.expressApp.post("/MMM-ImagesPhotos/api/hide-current", (req, res) => {
 			const instances = Array.from(this.activeInstances);
 			const primaryId = instances[0];
@@ -559,6 +626,7 @@ module.exports = NodeHelper.create({
 			this.sendSocketNotification("READY", payload.id);
 			this.sendSocketNotification("SERVER_IP", { id: payload.id, ip: this.getLocalIp() });
 			this.sendSocketNotification("BRIGHTNESS_UPDATED", { id: payload.id, brightness: this.brightness });
+			this.sendSocketNotification("DISPLAY_STATE_UPDATED", { id: payload.id, ...this.displayState });
 		}
 		if (notification === "CURRENT_PHOTO" && payload && payload.id) {
 			this.currentDisplayed[payload.id] = {
@@ -583,6 +651,8 @@ module.exports = NodeHelper.create({
 				location: null,
 				face: null,
 				memoryYearsAgo: photo.memoryYearsAgo || 0,
+				nearMemoryYearsAgo: photo.nearMemoryYearsAgo || 0,
+				isSameSeason: Boolean(photo.isSameSeason),
 				isFavorite: this.favorites.has(photo.path)
 			};
 
@@ -602,7 +672,10 @@ module.exports = NodeHelper.create({
 								const year = dt.getUTCFullYear();
 								const month = dt.getUTCMonth() + 1;
 								const day = dt.getUTCDate();
-								photoObject.memoryYearsAgo = computeMemoryYearsAgo(year, month, day);
+								const sm = computeSeasonalMemory(year, month, day);
+								photoObject.memoryYearsAgo = sm.memoryYearsAgo;
+								photoObject.nearMemoryYearsAgo = sm.nearMemoryYearsAgo;
+								photoObject.isSameSeason = sm.isSameSeason;
 
 								try {
 									const st = fs.statSync(imagePath);
@@ -683,8 +756,11 @@ module.exports = NodeHelper.create({
 			};
 			const fullPath = path.join(directoryImages, img);
 			const fc = this.faceCache[img];
-			if (fc && fc.face && fc.face.width && fc.face.height) {
-				entry.isPortrait = fc.face.height > fc.face.width;
+			if (fc && fc.face) {
+				entry.hasFaces = Boolean(fc.face.count > 0);
+				if (fc.face.width && fc.face.height) {
+					entry.isPortrait = fc.face.height > fc.face.width;
+				}
 			} else {
 				try {
 					const st = fs.statSync(fullPath);
@@ -721,10 +797,10 @@ module.exports = NodeHelper.create({
 			}
 			if (dc && dc.year && dc.month && dc.day) {
 				entry.dateStr = formatDateStr(dc.year, dc.month, dc.day);
-				const yearsAgo = computeMemoryYearsAgo(dc.year, dc.month, dc.day);
-				if (yearsAgo >= 1) {
-					entry.memoryYearsAgo = yearsAgo;
-				}
+				const sm = computeSeasonalMemory(dc.year, dc.month, dc.day);
+				if (sm.memoryYearsAgo >= 1) entry.memoryYearsAgo = sm.memoryYearsAgo;
+				if (sm.nearMemoryYearsAgo >= 1) entry.nearMemoryYearsAgo = sm.nearMemoryYearsAgo;
+				entry.isSameSeason = sm.isSameSeason;
 			}
 			entry.isFavorite = this.favorites.has(img);
 			return entry;

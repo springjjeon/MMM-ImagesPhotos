@@ -62,6 +62,9 @@ Module.register(ourModuleName, {
   pauseBadgeEl: null,
   suspended: false,
   paused: false,
+  galleryMode: false,
+  filterMode: "all",
+  filterFolder: "",
   timer: null,
   fadeTimers: [],
   fullscreen: false,
@@ -158,6 +161,9 @@ Module.register(ourModuleName, {
     if (notification === "BRIGHTNESS_UPDATED" && payload.id === this.identifier) {
       this.applyDimOverlay(payload.brightness);
     }
+    if (notification === "DISPLAY_STATE_UPDATED" && payload.id === this.identifier) {
+      this.applyDisplayState(payload);
+    }
     if (notification === "FAVORITE_UPDATED" && payload.id === this.identifier) {
       if (this.currentPhoto && this.currentPhoto.path === payload.path) {
         this.currentPhoto.isFavorite = payload.isFavorite;
@@ -244,6 +250,31 @@ Module.register(ourModuleName, {
     }
   },
 
+  applyDisplayState(state) {
+    if (typeof state.galleryMode === "boolean") {
+      this.galleryMode = state.galleryMode;
+      if (typeof document !== "undefined" && document.body) {
+        document.body.classList.toggle("mmip-gallery-mode", this.galleryMode);
+      }
+    }
+    const prevMode = this.filterMode;
+    const prevFolder = this.filterFolder;
+    if (typeof state.filterMode === "string") {
+      this.filterMode = state.filterMode;
+    }
+    if (typeof state.filterFolder === "string") {
+      this.filterFolder = state.filterFolder;
+    }
+    if (prevMode !== this.filterMode || prevFolder !== this.filterFolder) {
+      this.photoDeck = [];
+      this.nextPhoto = null;
+      if (this.loaded && this.photos.length > 0) {
+        this.prepareNextPhoto();
+        this.advanceNow();
+      }
+    }
+  },
+
   applyDimOverlay(brightnessPercent) {
     if (typeof document === "undefined" || !document.body) return;
     const pct = Math.max(15, Math.min(100, Number(brightnessPercent) || 100));
@@ -318,22 +349,51 @@ Module.register(ourModuleName, {
   },
 
   getFilteredPhotos() {
-    if (this.config.enableVideoPlayback) {
-      return this.photos;
+    let base = this.config.enableVideoPlayback
+      ? this.photos
+      : this.photos.filter((photo) => !this.isVideo(photo));
+
+    if (this.filterMode === "favorites") {
+      const favs = base.filter((p) => p.isFavorite === true);
+      if (favs.length > 0) return favs;
+    } else if (this.filterMode === "faces") {
+      const faced = base.filter((p) => p.hasFaces === true);
+      if (faced.length > 0) return faced;
+    } else if (this.filterMode === "videos") {
+      const vids = this.photos.filter((p) => this.isVideo(p));
+      if (vids.length > 0) return vids;
+    } else if (this.filterMode === "folder" && this.filterFolder) {
+      const prefix = this.filterFolder.split(String.fromCharCode(92)).join("/").replace(/\/+$/, "") + "/";
+      const matched = base.filter((p) => p.path.split(String.fromCharCode(92)).join("/").startsWith(prefix));
+      if (matched.length > 0) return matched;
     }
-    const filtered = this.photos.filter((photo) => !this.isVideo(photo));
-    if (filtered.length === 0 && this.config.debugToConsole) {
-      Log.warn(`[MMM-ImagesPhotos] No image files found. All files appear to be videos.`);
-    }
-    return filtered;
+
+    return base;
   },
 
   buildPhotoDeck(filteredPhotos) {
     const deck = filteredPhotos.slice();
-    // Give favorited photos 2x exposure weight in the deck
-    const favs = filteredPhotos.filter((p) => p.isFavorite === true);
-    favs.forEach((f) => deck.push(f));
-    // Fisher-Yates shuffle for non-repeating random cycle
+
+    // 1) Favorited photos: 2x weight
+    filteredPhotos.forEach((p) => {
+      if (p.isFavorite === true) deck.push(p);
+    });
+
+    // 2) This week (+/-7 days) anniversary photos: 2x weight
+    filteredPhotos.forEach((p) => {
+      if ((p.memoryYearsAgo && p.memoryYearsAgo >= 1) || (p.nearMemoryYearsAgo && p.nearMemoryYearsAgo >= 1)) {
+        deck.push(p);
+      }
+    });
+
+    // 3) Same season photos: ~1.5x subtle seasonal weight
+    filteredPhotos.forEach((p) => {
+      if (p.isSameSeason && Math.random() < 0.5) {
+        deck.push(p);
+      }
+    });
+
+    // Fisher-Yates shuffle
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       const tmp = deck[i];
@@ -341,10 +401,20 @@ Module.register(ourModuleName, {
       deck[j] = tmp;
     }
 
-    // Prioritize up to 2 "On This Day" memory photos near the front of the deck
-    const memories = deck.filter((p) => p.memoryYearsAgo && p.memoryYearsAgo >= 1);
+    // Prioritize up to 2 "On This Day" or "This Week" memory photos near the front
+    const memories = deck.filter(
+      (p) => (p.memoryYearsAgo && p.memoryYearsAgo >= 1) || (p.nearMemoryYearsAgo && p.nearMemoryYearsAgo >= 1)
+    );
     if (memories.length > 0 && deck.length > 3) {
-      const featured = memories.slice(0, 2);
+      const seen = new Set();
+      const featured = [];
+      for (const m of memories) {
+        if (!seen.has(m.path)) {
+          seen.add(m.path);
+          featured.push(m);
+          if (featured.length >= 2) break;
+        }
+      }
       featured.forEach((m, idx) => {
         const pos = deck.indexOf(m);
         if (pos > -1) {
@@ -825,6 +895,8 @@ Module.register(ourModuleName, {
     }
     if (photoImage.memoryYearsAgo && photoImage.memoryYearsAgo >= 1) {
       infoParts.push(`<span class="mmip-memory-badge">🎂 ${photoImage.memoryYearsAgo}년 전 오늘</span>`);
+    } else if (photoImage.nearMemoryYearsAgo && photoImage.nearMemoryYearsAgo >= 1) {
+      infoParts.push(`<span class="mmip-season-badge">🌸 ${photoImage.nearMemoryYearsAgo}년 전 이맘때</span>`);
     }
 
     if (tags) {
@@ -1097,6 +1169,7 @@ Module.register(ourModuleName, {
             const capParts = [];
             if (item.isFavorite) capParts.push("⭐");
             if (item.memoryYearsAgo && item.memoryYearsAgo >= 1) capParts.push(`🎂 ${item.memoryYearsAgo}년 전 오늘`);
+            else if (item.nearMemoryYearsAgo && item.nearMemoryYearsAgo >= 1) capParts.push(`🌸 ${item.nearMemoryYearsAgo}년 전 이맘때`);
             let dateLabel = item.dateStr || "";
             if (!dateLabel && item.exif && item.exif.tags && typeof item.exif.tags.DateTimeOriginal === "number") {
               const d = new Date(item.exif.tags.DateTimeOriginal * 1000);

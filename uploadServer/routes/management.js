@@ -42,6 +42,32 @@ function readScreenStatus(callback) {
 }
 
 const BRIGHTNESS_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "brightness.json");
+const DISPLAY_STATE_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "display-state.json");
+
+function readDisplayStateSync() {
+	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "" };
+	try {
+		if (fs.existsSync(DISPLAY_STATE_CACHE_FILE)) {
+			const parsed = JSON.parse(fs.readFileSync(DISPLAY_STATE_CACHE_FILE, "utf8"));
+			if (parsed && typeof parsed === "object") {
+				return {
+					galleryMode: Boolean(parsed.galleryMode),
+					filterMode: ["all", "favorites", "faces", "videos", "folder"].includes(parsed.filterMode) ? parsed.filterMode : "all",
+					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : ""
+				};
+			}
+		}
+	} catch (_) {}
+	return defaults;
+}
+
+function saveDisplayStateSync(state) {
+	const dir = path.dirname(DISPLAY_STATE_CACHE_FILE);
+	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	const tmp = `${DISPLAY_STATE_CACHE_FILE}.tmp`;
+	fs.writeFileSync(tmp, JSON.stringify(state), "utf8");
+	fs.renameSync(tmp, DISPLAY_STATE_CACHE_FILE);
+}
 
 function readBrightnessSync() {
 	try {
@@ -290,6 +316,29 @@ function createManagementRouter(uploadDir) {
 		notifyMagicMirrorRefresh(() => res.redirect(`/manage/photos?folderName=${encodeURIComponent(folderName)}`));
 	});
 
+	// --- Display State API (Gallery Mode & Playback Filter) ---
+	router.get("/api/display-state", (req, res) => {
+		res.json({ ok: true, ...readDisplayStateSync() });
+	});
+
+	router.post("/api/display-state", (req, res) => {
+		const body = req.body || {};
+		const next = readDisplayStateSync();
+		if (typeof body.galleryMode === "boolean") next.galleryMode = body.galleryMode;
+		if (typeof body.filterMode === "string" && ["all", "favorites", "faces", "videos", "folder"].includes(body.filterMode)) {
+			next.filterMode = body.filterMode;
+		}
+		if (typeof body.filterFolder === "string") next.filterFolder = body.filterFolder;
+		try {
+			saveDisplayStateSync(next);
+		} catch (err) {
+			return res.status(500).json({ ok: false, error: err.message });
+		}
+		callMagicMirrorApi("POST", "/display-state", next, () => {
+			res.json({ ok: true, ...next });
+		});
+	});
+
 	// --- Brightness Control API (DDC/CI VCP 0x10) ---
 	router.get("/api/brightness", (req, res) => {
 		readBrightness((brightness) => {
@@ -309,7 +358,12 @@ function createManagementRouter(uploadDir) {
 	});
 
 	// --- Remote Control & System Health APIs ---
-	router.get("/api/system-status", (req, res) => {
+	router.get("/api/system-status", async (req, res) => {
+		const allDirs = await fileUtils.getDirectories(uploadDir);
+		const visibleFolders = allDirs
+			.map((d) => d.split(path.sep).join("/"))
+			.filter((d) => !d.split("/").some((seg) => seg.startsWith("!")))
+			.sort();
 		const totalMemMB = Math.round(os.totalmem() / 1024 / 1024);
 		const freeMemMB = Math.round(os.freemem() / 1024 / 1024);
 		const usedMemMB = totalMemMB - freeMemMB;
@@ -328,7 +382,9 @@ function createManagementRouter(uploadDir) {
 								mmRunning,
 								screenStatus,
 								brightness,
+								displayState: readDisplayStateSync(),
 								favoriteCount: fileUtils.loadFavorites().size,
+								visibleFolders,
 								mm: mmStatus,
 								videoQueue: videoQueue.getStatus()
 							});
