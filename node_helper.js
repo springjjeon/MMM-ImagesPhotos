@@ -112,17 +112,27 @@ module.exports = NodeHelper.create({
 	},
 
 	buildLocationString(address, displayName) {
-		const locationParts = [];
-		const fields = ["road", "suburb", "village", "town", "city", "county", "state", "country"];
+		if (!address || typeof address !== "object") {
+			return displayName;
+		}
 
+		const countryCode = (address.country_code || "").toLowerCase();
+		const isKorea = countryCode === "kr" || address.country === "대한민국";
+
+		const fields = isKorea
+			? ["province", "state", "city", "county", "borough", "city_district", "town", "suburb", "quarter", "village", "neighbourhood", "road"]
+			: ["country", "province", "state", "city", "county", "town", "suburb", "quarter", "village", "road"];
+
+		const locationParts = [];
 		fields.forEach((field) => {
-			if (address[field]) {
-				locationParts.push(address[field]);
+			const val = address[field];
+			if (val && !locationParts.includes(val)) {
+				locationParts.push(val);
 			}
 		});
 
 		if (locationParts.length > 0) {
-			return locationParts.join(", ");
+			return locationParts.join(" ");
 		}
 
 		return displayName;

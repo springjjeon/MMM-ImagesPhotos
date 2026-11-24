@@ -189,22 +189,22 @@
 }
 
 @keyframes ip-zoom-panright {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateX(-2%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(6%); }
 }
 
 @keyframes ip-zoom-panleft {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateX(2%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-6%); }
 }
 
 @keyframes ip-zoom-panup {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateY(2%); }
   100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
 }
 
 @keyframes ip-zoom-pandown {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateY(-2%); }
   100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
 }
 

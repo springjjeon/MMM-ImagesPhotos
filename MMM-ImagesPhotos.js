@@ -788,7 +788,7 @@ Module.register(ourModuleName, {
         fg.appendChild(img);
         img.src = photoImage.url;
 
-        if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
+        if (this.config.showExif) {
           const exifWrapper = this.createExifWrapper(photoImage);
           if (exifWrapper) fg.appendChild(exifWrapper);
         }
@@ -802,58 +802,65 @@ Module.register(ourModuleName, {
   },
 
   createExifWrapper(photoImage) {
-      if (!this.config.showExif || !photoImage.exif || !photoImage.exif.tags) return null;
+      if (!this.config.showExif || !photoImage) return null;
       if (this.config.debugToConsole) {
         Log.log(`[MMM-ImagesPhotos] Building EXIF box for ${photoImage.url} with face count: ${photoImage.face ? photoImage.face.count : 'N/A'}`);
       }
       const exifWrapper = document.createElement("div");
       exifWrapper.className = "exif-info";
       const infoParts = [];
-      const timestamp = photoImage.exif.tags.DateTimeOriginal;
-      if (timestamp && typeof timestamp === 'number') {
-        const dateObj = new Date(timestamp * 1000);
-        const year = dateObj.getUTCFullYear();
-        const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(dateObj.getUTCDate()).padStart(2, '0');
-        const hour = String(dateObj.getUTCHours()).padStart(2, '0');
-        const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
-        infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
+      const tags = photoImage.exif && photoImage.exif.tags ? photoImage.exif.tags : null;
+
+      if (tags) {
+        const timestamp = tags.DateTimeOriginal;
+        if (timestamp && typeof timestamp === 'number') {
+          const dateObj = new Date(timestamp * 1000);
+          const year = dateObj.getUTCFullYear();
+          const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getUTCDate()).padStart(2, '0');
+          const hour = String(dateObj.getUTCHours()).padStart(2, '0');
+          const minute = String(dateObj.getUTCMinutes()).padStart(2, '0');
+          infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
+        }
       }
       if (photoImage.location) {
           infoParts.push(`📍 ${photoImage.location}`);
       }
-      if (photoImage.exif.tags.Model) {
-          infoParts.push(`📷 ${photoImage.exif.tags.Model}`);
+      if (tags && tags.Model) {
+          infoParts.push(`📷 ${tags.Model}`);
       }
-      const photoParamParts = [];
-      const tags = photoImage.exif.tags;
-      if (tags.FocalLength) {
-          photoParamParts.push(`${tags.FocalLength}mm`);
-      }
-      if (tags.FNumber) {
-          photoParamParts.push(`f/${tags.FNumber.toFixed(1)}`);
-      }
-      if (tags.ExposureTime) {
-          const exposureTime = tags.ExposureTime;
-          if (exposureTime < 1) {
-              photoParamParts.push(`1/${Math.round(1 / exposureTime)}s`);
-          } else {
-              photoParamParts.push(`${exposureTime}s`);
-          }
-      }
-      if (tags.ISO) {
-          photoParamParts.push(`ISO ${tags.ISO}`);
-      }
-      if (photoParamParts.length > 0) {
-          infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
-      }
-      if (photoImage.effect) {
-        let effectString = `✨ ${photoImage.effect}`;
-        if (photoImage.face && photoImage.face.count > 0) {
-          effectString += ` (${photoImage.face.count}👤)`;
+      if (tags) {
+        const photoParamParts = [];
+        if (tags.FocalLength) {
+            photoParamParts.push(`${tags.FocalLength}mm`);
         }
-        infoParts.push(effectString);
+        if (tags.FNumber) {
+            photoParamParts.push(`f/${tags.FNumber.toFixed(1)}`);
+        }
+        if (tags.ExposureTime) {
+            const exposureTime = tags.ExposureTime;
+            if (exposureTime < 1) {
+                photoParamParts.push(`1/${Math.round(1 / exposureTime)}s`);
+            } else {
+                photoParamParts.push(`${exposureTime}s`);
+            }
+        }
+        if (tags.ISO) {
+            photoParamParts.push(`ISO ${tags.ISO}`);
+        }
+        if (photoParamParts.length > 0) {
+            infoParts.push(`⚙️ ${photoParamParts.join(' ')}`);
+        }
       }
+
+      const effectLabel = photoImage.effect || "still";
+      const faceCount = photoImage.face && typeof photoImage.face.count === "number" ? photoImage.face.count : 0;
+      let effectString = `✨ ${effectLabel}`;
+      if (faceCount > 0) {
+        effectString += ` (${faceCount}👤)`;
+      }
+      infoParts.push(effectString);
+
       if (infoParts.length > 0) {
           exifWrapper.innerHTML = infoParts.join('<br>');
           return exifWrapper;
@@ -992,7 +999,7 @@ Module.register(ourModuleName, {
           img.src = photoImage.url;
           this.fg.appendChild(img);
 
-          if (this.config.showExif && photoImage.exif && photoImage.exif.tags) {
+          if (this.config.showExif) {
               const exifWrapper = this.createExifWrapper(photoImage);
               if (exifWrapper) this.fg.appendChild(exifWrapper);
           }
