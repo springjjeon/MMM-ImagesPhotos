@@ -28,6 +28,7 @@ Module.register(ourModuleName, {
     transitionMode: "black", // "black" | "crossfade"
     enablePortraitCollage: true,
     collageProbability: 0.5,
+    stillProbability: 0.25,
     imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
@@ -716,9 +717,15 @@ Module.register(ourModuleName, {
   },
 
   pickRegularEffect() {
-    const regularEffects = this.config.imageEffects.filter((e) => e !== "ip-face-zoom");
-    const randomEffect = regularEffects[Math.floor(Math.random() * regularEffects.length)] || "ip-still";
+    const stillProb = typeof this.config.stillProbability === "number" ? this.config.stillProbability : 0.25;
+    const movingEffects = this.config.imageEffects.filter((e) => e !== "ip-face-zoom" && e !== "ip-still");
     const randomDuration = (20 + Math.random() * 20).toFixed(2) + "s";
+
+    if (movingEffects.length === 0 || Math.random() < stillProb) {
+      return { effectClass: "ip-still", duration: randomDuration, label: "ip-still" };
+    }
+
+    const randomEffect = movingEffects[Math.floor(Math.random() * movingEffects.length)];
     return { effectClass: randomEffect, duration: randomDuration, label: `${randomEffect} ${randomDuration}` };
   },
 
@@ -1012,23 +1019,10 @@ Module.register(ourModuleName, {
           // --- SINGLE IMAGE LOGIC (FS) ---
           const img = document.createElement("img");
 
-          let finalEffect = "";
-          let isFaceZoom = false;
-
-          if (this.config.faceDetection && this.config.imageEffects.includes("ip-face-zoom") && photoImage.face && photoImage.face.faces && photoImage.face.faces.length > 0) {
-            if (Math.random() < 0.4) {
-              isFaceZoom = true;
-            }
-          }
-
-          if (isFaceZoom) {
-            // Intentionally keep static when face zoom branch is selected
-          } else {
-            const picked = this.pickRegularEffect();
-            img.className = `bgimage mmip-bgimage ${picked.effectClass}`;
-            img.style.animationDuration = picked.duration;
-            finalEffect = picked.label;
-          }
+          const picked = this.pickRegularEffect();
+          img.className = `bgimage mmip-bgimage ${picked.effectClass}`;
+          img.style.animationDuration = picked.duration;
+          const finalEffect = picked.label;
 
           img.classList.add(this.isPhotoPortrait(photoImage) ? "portrait" : "landscape");
           photoImage.effect = finalEffect;
