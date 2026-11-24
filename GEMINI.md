@@ -132,5 +132,5 @@ MagicMirror 프로세스(`node_helper.js`)가 로컬 전용 제어 API를 제공
 - **모니터 밝기 제어 & 야간 자동 디밍**: `GET/POST /manage/api/brightness` (`ddcutil` VCP `0x10`, 10~100%), 리모컨 슬라이더/프리셋, `~/autoBrightness.sh` + `crontab` (07:30 `80%`, 21:00 `35%`, 화면 ON일 때만 동작)
 - **갤러리 전용 모드 (`galleryMode`)**: `.cache/display-state.json` 영구 저장, `body.mmip-gallery-mode`로 모든 위젯·스크림·QR·메타정보를 0.45초 부드럽게 숨김/복귀 (`POST /manage/api/display-state`)
 - **리모컨 재생 필터 (`filterMode`)**: `all` / `favorites` / `faces` / `videos` / `folder` 실시간 즉시 전환 (결과 0건 시 전체로 안전 폴백)
-- **이번 주(±7일)·같은 계절 추억 가중치**: ±7일 이맘때 사진 2배 가중치 + `🌸 N년 전 이맘때` 배지, 같은 계절 사진 ~1.5배 가중치
+- **이번 주(±7일)·같은 계절 추억 가중치**: ±7일 이맘때·같은 계절 사진 **5배 가중치**(`seasonalWeight: 5`, 인접 중복 방지 적용) + `🌸 N년 전 이맘때` 배지
 - **소프트웨어 디밍 오버레이**: BenQ EW2775ZH DDC VCP `0x10` 잠금 우회를 위해 `#mmip-dim-overlay`(`15%~100%`, `.cache/brightness.json`) 사용, `~/autoBrightness.sh` 크론(`07:30 100%`, `21:00 40%`) 연동

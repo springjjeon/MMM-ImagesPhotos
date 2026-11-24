@@ -29,6 +29,7 @@ Module.register(ourModuleName, {
     enablePortraitCollage: true,
     collageProbability: 0.5,
     stillProbability: 0.25,
+    seasonalWeight: 5,
     imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
       "ip-zoom-panright", "ip-zoom-panleft", "ip-zoom-panup", "ip-zoom-pandown",
@@ -374,21 +375,20 @@ Module.register(ourModuleName, {
   buildPhotoDeck(filteredPhotos) {
     const deck = filteredPhotos.slice();
 
-    // 1) Favorited photos: 2x weight
-    filteredPhotos.forEach((p) => {
-      if (p.isFavorite === true) deck.push(p);
-    });
+    const seasonalMultiplier = Math.max(1, Math.round(Number(this.config.seasonalWeight) || 5));
 
-    // 2) This week (+/-7 days) anniversary photos: 2x weight
+    // Apply weights cleanly without over-stacking (seasonal/anniversary = 5x, favorite = +1)
     filteredPhotos.forEach((p) => {
-      if ((p.memoryYearsAgo && p.memoryYearsAgo >= 1) || (p.nearMemoryYearsAgo && p.nearMemoryYearsAgo >= 1)) {
-        deck.push(p);
+      const isMemoryOrSeason = Boolean(
+        (p.memoryYearsAgo && p.memoryYearsAgo >= 1) ||
+        (p.nearMemoryYearsAgo && p.nearMemoryYearsAgo >= 1) ||
+        p.isSameSeason
+      );
+      let extraCopies = isMemoryOrSeason ? seasonalMultiplier - 1 : 0;
+      if (p.isFavorite === true) {
+        extraCopies += 1;
       }
-    });
-
-    // 3) Same season photos: ~1.5x subtle seasonal weight
-    filteredPhotos.forEach((p) => {
-      if (p.isSameSeason && Math.random() < 0.5) {
+      for (let c = 0; c < extraCopies; c++) {
         deck.push(p);
       }
     });
@@ -399,6 +399,20 @@ Module.register(ourModuleName, {
       const tmp = deck[i];
       deck[i] = deck[j];
       deck[j] = tmp;
+    }
+
+    // Prevent back-to-back identical photos caused by higher weights
+    for (let i = 1; i < deck.length; i++) {
+      if (deck[i].path === deck[i - 1].path) {
+        for (let k = i + 1; k < deck.length; k++) {
+          if (deck[k].path !== deck[i - 1].path) {
+            const tmp = deck[i];
+            deck[i] = deck[k];
+            deck[k] = tmp;
+            break;
+          }
+        }
+      }
     }
 
     // Prioritize up to 2 "On This Day" or "This Week" memory photos near the front
