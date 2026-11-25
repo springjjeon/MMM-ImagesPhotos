@@ -936,6 +936,33 @@ Module.register(ourModuleName, {
     return this.getDomnotFS();
   },
 
+  computeFaceObjectPosition(photoImage) {
+    if (!photoImage || !photoImage.face) return null;
+    const { width, height, faces } = photoImage.face;
+    if (!width || !height || !Array.isArray(faces) || faces.length === 0) return null;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    faces.forEach((f) => {
+      if (typeof f.x !== "number" || typeof f.y !== "number") return;
+      const fx2 = f.x + (f.w || 0);
+      const fy2 = f.y + (f.h || 0);
+      if (f.x < minX) minX = f.x;
+      if (f.y < minY) minY = f.y;
+      if (fx2 > maxX) maxX = fx2;
+      if (fy2 > maxY) maxY = fy2;
+    });
+    if (!isFinite(minX) || !isFinite(minY)) return null;
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2 - (maxY - minY) * 0.1;
+    const pctX = Math.max(10, Math.min(90, Math.round((cx / width) * 100)));
+    const pctY = Math.max(5, Math.min(85, Math.round((cy / height) * 100)));
+    return `${pctX}% ${pctY}%`;
+  },
+
   isVideo(photo) {
     const videoExtensions = ["mp4", "webm", "ogg", "mov"];
     const url = photo.url.toLowerCase();
@@ -1223,6 +1250,10 @@ Module.register(ourModuleName, {
             img.className = `bgimage mmip-bgimage mmip-collage-img ${orientCls} ${eff.effectClass}`;
             img.style.animationDuration = eff.duration;
             img.style.opacity = self.config.opacity;
+            const smartPos = self.computeFaceObjectPosition(item);
+            if (smartPos) {
+              img.style.objectPosition = smartPos;
+            }
             try { img.crossOrigin = "Anonymous"; } catch (e) {}
 
             img.onload = () => {
