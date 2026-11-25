@@ -457,3 +457,29 @@ body.mmip-gallery-mode .region.top::before,
 body.mmip-gallery-mode .region.bottom::before {
   opacity: 0 !important;
 }
+
+/* Per-cell full metadata stack inside 2-up collage */
+.MMM-ImagesPhotos .mmip-collage-cell .mmip-collage-meta-stack {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  max-width: calc(100% - 28px);
+  gap: 8px;
+  z-index: 6;
+}
+
+.MMM-ImagesPhotos .mmip-meta-compact .exif-info {
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.88em;
+  line-height: 1.38;
+}
+
+.MMM-ImagesPhotos .mmip-meta-compact .mmip-spotlight-pill {
+  font-size: 19px;
+  padding: 6px 14px;
+}
+
+.MMM-ImagesPhotos .mmip-meta-compact .mmip-spot-today {
+  font-size: 21px;
+}

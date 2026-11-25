@@ -290,7 +290,7 @@ Module.register(ourModuleName, {
 
   updateFavoriteBadgeDom() {
     if (!this.fg || !this.currentPhoto) return;
-    const stack = this.fg.querySelector(".mmip-meta-stack");
+    const stack = this.fg.querySelector('.mmip-meta-stack[data-mmip-role="primary"]') || this.fg.querySelector(".mmip-meta-stack");
     if (!stack) return;
     const oldRow = stack.querySelector(".mmip-spotlight-row");
     if (oldRow) oldRow.remove();
@@ -387,10 +387,16 @@ Module.register(ourModuleName, {
       }
       return;
     }
-    if (this.config.debugToConsole) {
-      Log.log(`[MMM-ImagesPhotos] prepareNextPhoto: requesting metadata for: ${nextPhoto.path}`);
+    const collageMatch = this.pickCollageCompanion(nextPhoto);
+    const reqPayload = { id: this.identifier, photo: nextPhoto };
+    if (collageMatch) {
+      reqPayload.companion = collageMatch.photo;
+      reqPayload.collageLayout = collageMatch.layout;
     }
-    this.sendSocketNotification("GET_METADATA", { id: this.identifier, photo: nextPhoto });
+    if (this.config.debugToConsole) {
+      Log.log(`[MMM-ImagesPhotos] prepareNextPhoto: requesting metadata for: ${nextPhoto.path}${collageMatch ? " + " + collageMatch.photo.path : ""}`);
+    }
+    this.sendSocketNotification("GET_METADATA", reqPayload);
   },
 
   scheduleUpdate(delay) {
@@ -949,11 +955,11 @@ Module.register(ourModuleName, {
     return { effectClass: randomEffect, duration: randomDuration, label: `${randomEffect} ${randomDuration}` };
   },
 
-  createExifWrapper(photoImage) {
+  createExifWrapper(photoImage, options = {}) {
     if (!this.config.showExif || !photoImage) return null;
 
     const stack = document.createElement("div");
-    stack.className = "mmip-meta-stack";
+    stack.className = options.compact ? "mmip-meta-stack mmip-meta-compact" : "mmip-meta-stack";
 
     const spotlight = this.createSpotlightBadges(photoImage);
     if (spotlight) {
@@ -965,6 +971,7 @@ Module.register(ourModuleName, {
     const infoParts = [];
     const tags = photoImage.exif && photoImage.exif.tags ? photoImage.exif.tags : null;
 
+    let hasExifDate = false;
     if (tags) {
       const timestamp = tags.DateTimeOriginal;
       if (timestamp && typeof timestamp === "number") {
@@ -975,7 +982,11 @@ Module.register(ourModuleName, {
         const hour = String(dateObj.getUTCHours()).padStart(2, "0");
         const minute = String(dateObj.getUTCMinutes()).padStart(2, "0");
         infoParts.push(`🗓️ ${year}-${month}-${day} ${hour}:${minute}`);
+        hasExifDate = true;
       }
+    }
+    if (!hasExifDate && photoImage.dateStr) {
+      infoParts.push(`🗓️ ${photoImage.dateStr}`);
     }
     if (photoImage.location) {
       infoParts.push(`📍 ${photoImage.location}`);
@@ -1188,18 +1199,16 @@ Module.register(ourModuleName, {
           this.bk.style.backgroundColor = "black";
         }
       } else {
-        const collageMatch = this.pickCollageCompanion(photoImage);
+        const isCollage = !photoImage.forceSingle && Boolean(photoImage.companion && photoImage.collageLayout);
 
-        if (collageMatch) {
-          // --- ORIENTATION-AWARE 2-UP COLLAGE ---
-          const companion = collageMatch.photo;
-          photoImage.companion = companion;
+        if (isCollage) {
+          // --- ORIENTATION-AWARE 2-UP COLLAGE (with full per-cell EXIF/location/face metadata) ---
+          const companion = photoImage.companion;
+          const layout = photoImage.collageLayout;
           const grid = document.createElement("div");
-          grid.className = `mmip-collage-grid mmip-collage-${collageMatch.layout}`;
+          grid.className = `mmip-collage-grid mmip-collage-${layout}`;
 
           const picked = this.pickRegularEffect();
-          photoImage.effect = `collage-${collageMatch.layout} · ${picked.effectClass}`;
-
           const pair = [photoImage, companion];
           let loadedCount = 0;
           let firstImgEl = null;
@@ -1209,7 +1218,8 @@ Module.register(ourModuleName, {
             cell.className = "mmip-collage-cell";
             const img = document.createElement("img");
             const eff = idx === 0 ? picked : this.pickRegularEffect();
-            const orientCls = collageMatch.layout === "vertical" ? "landscape" : "portrait";
+            item.effect = eff.label;
+            const orientCls = layout === "vertical" ? "landscape" : "portrait";
             img.className = `bgimage mmip-bgimage mmip-collage-img ${orientCls} ${eff.effectClass}`;
             img.style.animationDuration = eff.duration;
             img.style.opacity = self.config.opacity;
@@ -1232,31 +1242,19 @@ Module.register(ourModuleName, {
             img.src = item.url;
             cell.appendChild(img);
 
-            const capParts = [];
-            if (item.isFavorite) capParts.push("⭐");
-            if (item.memoryYearsAgo && item.memoryYearsAgo >= 1) capParts.push(`🎂 ${item.memoryYearsAgo}년 전 오늘`);
-            else if (item.nearMemoryYearsAgo && item.nearMemoryYearsAgo >= 1) capParts.push(`🌸 ${item.nearMemoryYearsAgo}년 전 이맘때`);
-            let dateLabel = item.dateStr || "";
-            if (!dateLabel && item.exif && item.exif.tags && typeof item.exif.tags.DateTimeOriginal === "number") {
-              const d = new Date(item.exif.tags.DateTimeOriginal * 1000);
-              dateLabel = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-            }
-            if (dateLabel) capParts.push(`🗓️ ${dateLabel}`);
-            if (capParts.length > 0) {
-              const cap = document.createElement("div");
-              cap.className = "mmip-collage-caption";
-              cap.textContent = capParts.join(" · ");
-              cell.appendChild(cap);
+            if (this.config.showExif) {
+              const cellMeta = this.createExifWrapper(item, { compact: true });
+              if (cellMeta) {
+                cellMeta.classList.add("mmip-collage-meta-stack");
+                cellMeta.dataset.mmipRole = idx === 0 ? "primary" : "companion";
+                cell.appendChild(cellMeta);
+              }
             }
 
             grid.appendChild(cell);
           });
 
           targetLayer.appendChild(grid);
-          if (this.config.showExif) {
-            const exifWrapper = this.createExifWrapper(photoImage);
-            if (exifWrapper) targetLayer.appendChild(exifWrapper);
-          }
         } else {
           // --- SINGLE IMAGE LOGIC (FS) ---
           const img = document.createElement("img");

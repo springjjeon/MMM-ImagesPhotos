@@ -687,91 +687,100 @@ module.exports = NodeHelper.create({
 			}
 		}
 		if (notification === "GET_METADATA") {
-			const { id, photo } = payload;
-			const directoryImages = this.path_images[id];
-			const imagePath = path.join(directoryImages, photo.path);
-
-			const photoObject = {
-				...photo,
-				exif: null,
-				location: null,
-				face: null,
-				memoryYearsAgo: photo.memoryYearsAgo || 0,
-				nearMemoryYearsAgo: photo.nearMemoryYearsAgo || 0,
-				isSameSeason: Boolean(photo.isSameSeason),
-				isFavorite: this.favorites.has(photo.path)
-			};
-
-			const mediaType = mime.lookup(imagePath);
-			const isVideo = mediaType && mediaType.startsWith("video/");
-
+			const { id, photo, companion, collageLayout } = payload;
 			try {
-				if (!isVideo && this.config[id].showExif) {
-					if (mediaType === "image/jpeg" || mediaType === "image/jpg" || mediaType === "image/tiff") {
-						try {
-							const fileBuffer = fs.readFileSync(imagePath);
-							const parser = exifParser.create(fileBuffer);
-							photoObject.exif = parser.parse();
-
-							if (photoObject.exif && photoObject.exif.tags && typeof photoObject.exif.tags.DateTimeOriginal === "number") {
-								const dt = new Date(photoObject.exif.tags.DateTimeOriginal * 1000);
-								const year = dt.getUTCFullYear();
-								const month = dt.getUTCMonth() + 1;
-								const day = dt.getUTCDate();
-								const sm = computeSeasonalMemory(year, month, day);
-								photoObject.memoryYearsAgo = sm.memoryYearsAgo;
-								photoObject.nearMemoryYearsAgo = sm.nearMemoryYearsAgo;
-								photoObject.isSameSeason = sm.isSameSeason;
-
-								try {
-									const st = fs.statSync(imagePath);
-									this.dateCache[photo.path] = { mtimeMs: st.mtimeMs, size: st.size, year, month, day };
-									this.scheduleSaveDateCache();
-								} catch (_) {
-									// ignore
-								}
-							}
-						} catch (error) {
-							console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
-						}
-					} else {
-						photoObject.exif = null;
-					}
-
-					if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
-						const lat = Number(photoObject.exif.tags.GPSLatitude);
-						const lon = Number(photoObject.exif.tags.GPSLongitude);
-						const lang = this.config[id].language || "ko";
-						const geoKey = `${lat.toFixed(4)},${lon.toFixed(4)},${lang}`;
-
-						if (Object.prototype.hasOwnProperty.call(this.geocodeCache, geoKey)) {
-							photoObject.location = this.geocodeCache[geoKey];
-						} else {
-							try {
-								const locationData = await reverseGeocode(lat, lon, lang);
-								if (locationData && locationData.address) {
-									photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
-									if (photoObject.location) {
-										this.geocodeCache[geoKey] = photoObject.location;
-										this.scheduleSaveGeocodeCache();
-									}
-								}
-							} catch (e) {
-								console.error(`[MMM-ImagesPhotos] Could not reverse geocode for ${photo.path}:`, e.message);
-							}
-						}
-					}
+				const photoObject = await this.enrichPhotoMetadata(id, photo);
+				if (companion && collageLayout) {
+					photoObject.companion = await this.enrichPhotoMetadata(id, companion);
+					photoObject.collageLayout = collageLayout;
 				}
-
-				if (!isVideo && this.config[id].faceDetection) {
-					photoObject.face = await this.runFaceDetection(imagePath, id);
-				}
-
 				this.sendSocketNotification("METADATA_RESPONSE", { id: id, photo: photoObject });
 			} catch (e) {
 				console.error(`[MMM-ImagesPhotos] Error processing metadata for ${photo.path}:`, e);
 			}
 		}
+	},
+
+	async enrichPhotoMetadata(id, photo) {
+		const directoryImages = this.path_images[id];
+		const imagePath = path.join(directoryImages, photo.path);
+
+		const photoObject = {
+			...photo,
+			exif: null,
+			location: null,
+			face: null,
+			memoryYearsAgo: photo.memoryYearsAgo || 0,
+			nearMemoryYearsAgo: photo.nearMemoryYearsAgo || 0,
+			isSameSeason: Boolean(photo.isSameSeason),
+			isFavorite: this.favorites.has(photo.path)
+		};
+
+		const mediaType = mime.lookup(imagePath);
+		const isVideo = mediaType && mediaType.startsWith("video/");
+
+		if (!isVideo && this.config[id].showExif) {
+			if (mediaType === "image/jpeg" || mediaType === "image/jpg" || mediaType === "image/tiff") {
+				try {
+					const fileBuffer = fs.readFileSync(imagePath);
+					const parser = exifParser.create(fileBuffer);
+					photoObject.exif = parser.parse();
+
+					if (photoObject.exif && photoObject.exif.tags && typeof photoObject.exif.tags.DateTimeOriginal === "number") {
+						const dt = new Date(photoObject.exif.tags.DateTimeOriginal * 1000);
+						const year = dt.getUTCFullYear();
+						const month = dt.getUTCMonth() + 1;
+						const day = dt.getUTCDate();
+						const sm = computeSeasonalMemory(year, month, day);
+						photoObject.memoryYearsAgo = sm.memoryYearsAgo;
+						photoObject.nearMemoryYearsAgo = sm.nearMemoryYearsAgo;
+						photoObject.isSameSeason = sm.isSameSeason;
+
+						try {
+							const st = fs.statSync(imagePath);
+							this.dateCache[photo.path] = { mtimeMs: st.mtimeMs, size: st.size, year, month, day };
+							this.scheduleSaveDateCache();
+						} catch (_) {
+							// ignore
+						}
+					}
+				} catch (error) {
+					console.error(`[MMM-ImagesPhotos] Could not parse EXIF for ${photo.path}:`, error.message);
+				}
+			} else {
+				photoObject.exif = null;
+			}
+
+			if (photoObject.exif && photoObject.exif.tags && photoObject.exif.tags.GPSLatitude && photoObject.exif.tags.GPSLongitude) {
+				const lat = Number(photoObject.exif.tags.GPSLatitude);
+				const lon = Number(photoObject.exif.tags.GPSLongitude);
+				const lang = this.config[id].language || "ko";
+				const geoKey = `${lat.toFixed(4)},${lon.toFixed(4)},${lang}`;
+
+				if (Object.prototype.hasOwnProperty.call(this.geocodeCache, geoKey)) {
+					photoObject.location = this.geocodeCache[geoKey];
+				} else {
+					try {
+						const locationData = await reverseGeocode(lat, lon, lang);
+						if (locationData && locationData.address) {
+							photoObject.location = this.buildLocationString(locationData.address, locationData.display_name);
+							if (photoObject.location) {
+								this.geocodeCache[geoKey] = photoObject.location;
+								this.scheduleSaveGeocodeCache();
+							}
+						}
+					} catch (e) {
+						console.error(`[MMM-ImagesPhotos] Could not reverse geocode for ${photo.path}:`, e.message);
+					}
+				}
+			}
+		}
+
+		if (!isVideo && this.config[id].faceDetection) {
+			photoObject.face = await this.runFaceDetection(imagePath, id);
+		}
+
+		return photoObject;
 	},
 
 	extraRoutes(id) {
