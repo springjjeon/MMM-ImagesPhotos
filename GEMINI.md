@@ -15,7 +15,7 @@ MMM-ImagesPhotos/
 ├── node_helper.js            # 미디어 스캔, 영구 캐시, EXIF/GPS/얼굴인식, 내부 제어 HTTP API
 ├── clean_names.py            # 업로드 파일/폴더명 정규화 (스크립트 위치 기준 uploads/ 자동 탐색)
 ├── clean_extensions.sh       # 비미디어 잔여 파일 정리 (--dry-run 지원, 동영상 보호)
-├── convert_videos.sh         # ffmpeg 기반 동영상 최적화 (h264/yuv420p/720p)
+├── convert_videos.sh         # FFmpeg 7.x 동영상 최적화 (-nostdin, -threads 3, h264/yuv420p/720p)
 ├── start-upload-server.sh    # PM2 프로덕션 실행 스크립트 (--watch 옵션 지원, 메모리 상한 300M)
 ├── sync_mirror_upload.sh     # rclone 구글 포토 동기화 보조 스크립트
 ├── .cache/                   # (Git 제외) 영구 JSON 캐시 및 360px 썸네일 저장소
@@ -129,7 +129,6 @@ MagicMirror 프로세스(`node_helper.js`)가 로컬 전용 제어 API를 제공
 - **즐겨찾기 (`favorites`)**: `.cache/favorites.json` 저장, 셔플 덱 **2배 가중치**, 메타정보 `⭐ 즐겨찾기` 배지, 리모컨(`POST /MMM-ImagesPhotos/api/favorite`) 및 사진 관리 카드 `★/☆` 토글 지원
 - **콜라주 개별 캡션**: 2장 콜라주 각 셀 좌측 하단(`.mmip-collage-caption`)에 사진별 EXIF 촬영일·즐겨찾기·추억 배지 표시
 - **사진 관리 EXIF 촬영일 정렬**: `file-utils.js`가 `.cache/exif-date-cache.json` + 64KB 헤더 스캔으로 `촬영일 최신순(exif_desc)` / `촬영일 오래된순(exif_asc)` / `⭐ 즐겨찾기 우선(fav_first)` 정렬 지원
-- **모니터 밝기 제어 & 야간 자동 디밍**: `GET/POST /manage/api/brightness` (`ddcutil` VCP `0x10`, 10~100%), 리모컨 슬라이더/프리셋, `~/autoBrightness.sh` + `crontab` (07:30 `80%`, 21:00 `35%`, 화면 ON일 때만 동작)
 - **갤러리 전용 모드 (`galleryMode`)**: `.cache/display-state.json` 영구 저장, `body.mmip-gallery-mode`로 모든 위젯·스크림·QR·메타정보를 0.45초 부드럽게 숨김/복귀 (`POST /manage/api/display-state`)
 - **리모컨 재생 필터 (`filterMode`)**: `all` / `favorites` / `faces` / `videos` / `folder` 실시간 즉시 전환 (결과 0건 시 전체로 안전 폴백)
 - **오늘·이번 주(±7일) 추억 가중치**: 오늘(±0일)·±7일 이맘때 추억 사진만 **3배 가중치**(같은 계절 가중치 제외)(`seasonalWeight: 3`, 인접 중복 방지 적용) + `🌸 N년 전 이맘때` 배지
