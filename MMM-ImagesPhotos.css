@@ -186,24 +186,24 @@ body.mmip-paused .MMM-ImagesPhotos .mmip-collage-img {
   animation-play-state: paused !important;
 }
 
-/* Keyframes (all pan offsets kept strictly inside scale(1.15) safe margin <= 6.5% to prevent black edge gaps) */
+/* Keyframes (gentle gallery-grade 5%~7% zoom and subtle pan within safe edge margins) */
 @keyframes ip-zoom {
   0% { transform: scale(var(--base-scale)); }
-  100% { transform: scale(calc(var(--base-scale) * 1.10)); }
+  100% { transform: scale(calc(var(--base-scale) * 1.05)); }
 }
 
 @keyframes ip-zoom-out {
-  0% { transform: scale(calc(var(--base-scale) * 1.10)); }
+  0% { transform: scale(calc(var(--base-scale) * 1.05)); }
   100% { transform: scale(var(--base-scale)); }
 }
 
 @keyframes ip-face-zoom-in {
   0% { transform: scale(var(--base-scale)); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)); }
+  100% { transform: scale(calc(var(--base-scale) * 1.07)); }
 }
 
 @keyframes ip-face-zoom-out {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)); }
+  0% { transform: scale(calc(var(--base-scale) * 1.07)); }
   100% { transform: scale(var(--base-scale)); }
 }
 
@@ -215,60 +215,60 @@ body.mmip-paused .MMM-ImagesPhotos .mmip-collage-img {
 }
 
 @keyframes ip-panleft {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(5.2%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-5.2%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translateX(2.6%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateX(-2.6%); }
 }
 
 @keyframes ip-panright {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-5.2%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(5.2%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translateX(-2.6%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateX(2.6%); }
 }
 
 @keyframes ip-panup {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(4.0%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-4.0%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translateY(2.2%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateY(-2.2%); }
 }
 
 @keyframes ip-pandown {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-4.0%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(4.0%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translateY(-2.2%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateY(2.2%); }
 }
 
 @keyframes ip-zoom-panright {
-  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateX(-2.0%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(4.8%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.03)) translateX(-1.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateX(2.4%); }
 }
 
 @keyframes ip-zoom-panleft {
-  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateX(2.0%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-4.8%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.03)) translateX(1.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateX(-2.4%); }
 }
 
 @keyframes ip-zoom-panup {
-  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateY(1.8%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-4.0%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.03)) translateY(1.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateY(-2.0%); }
 }
 
 @keyframes ip-zoom-pandown {
-  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateY(-1.8%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(4.0%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.03)) translateY(-1.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translateY(2.0%); }
 }
 
 @keyframes ip-pan-diag-tl-br {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, -3.6%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, 3.6%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translate(-2.4%, -1.8%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translate(2.4%, 1.8%); }
 }
 @keyframes ip-pan-diag-tr-bl {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, -3.6%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, 3.6%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translate(2.4%, -1.8%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translate(-2.4%, 1.8%); }
 }
 @keyframes ip-pan-diag-bl-tr {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, 3.6%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, -3.6%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translate(-2.4%, 1.8%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translate(2.4%, -1.8%); }
 }
 @keyframes ip-pan-diag-br-tl {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, 3.6%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, -3.6%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.08)) translate(2.4%, 1.8%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.08)) translate(-2.4%, -1.8%); }
 }
 
 @keyframes ip-still {

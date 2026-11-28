@@ -985,7 +985,7 @@ Module.register(ourModuleName, {
     const fadeMs = cfg.fadeDuration || defs.fadeDuration || 1500;
     const isCrossfade = this.fullscreen && cfg.transitionMode === "crossfade";
     const blackMs = isCrossfade ? 0 : (cfg.blackDuration || defs.blackDuration || 1000);
-    const totalSec = Math.max(6, (displayMs + fadeMs * 2) / 1000).toFixed(2) + "s";
+    const totalSec = Math.max(16, (displayMs + fadeMs * 2) / 1000).toFixed(2) + "s";
     const delaySec = (blackMs / 1000).toFixed(2) + "s";
     return { duration: totalSec, delay: delaySec };
   },
