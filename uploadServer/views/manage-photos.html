@@ -1,529 +1,704 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>[{{displayName}}] 사진 관리</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#4c6ef5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <title>{{displayName}} - 사진 관리</title>
     <style>
+        :root {
+            --bg: #f3f5fa;
+            --surface: #ffffff;
+            --surface-alt: #f8f9fd;
+            --border: #e4e8f1;
+            --text: #1b2230;
+            --muted: #647087;
+            --primary: #4c6ef5;
+            --success: #2b8a3e;
+            --warning: #f08c00;
+            --danger: #e03131;
+            --shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+        }
+        [data-theme="dark"] {
+            --bg: #0f141e;
+            --surface: #182030;
+            --surface-alt: #202a3d;
+            --border: #2c3850;
+            --text: #eef2f8;
+            --muted: #9aa7bd;
+            --primary: #5c7cfa;
+            --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f4f4f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
             margin: 0;
-            padding: 20px;
+            padding: 12px 12px calc(92px + env(safe-area-inset-bottom));
         }
-        .main-container {
-            max-width: 1600px;
-            margin: 0 auto;
+        .main-container { max-width: 1440px; margin: 0 auto; }
+
+        /* Virtual Tabs */
+        .virtual-tabs {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 4px;
+            scrollbar-width: none;
         }
+        .virtual-tabs::-webkit-scrollbar { display: none; }
+        .vtab {
+            padding: 8px 13px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .vtab.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        /* Header Card */
         .page-header {
-            background: white;
-            padding: 20px 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            margin-bottom: 25px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            margin-bottom: 14px;
         }
         .header-top {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 10px;
             flex-wrap: wrap;
-            gap: 15px;
         }
         .page-title {
             margin: 0;
-            font-size: 22px;
-            font-weight: 600;
+            font-size: 18px;
+            font-weight: 800;
             word-break: break-all;
         }
-        .back-link {
-            padding: 10px 20px;
-            background: #6c757d;
-            color: white;
+        .count-badge {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--muted);
+            margin-left: 6px;
+        }
+        .header-btns {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .hdr-btn {
+            padding: 8px 13px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface-alt);
+            color: var(--text);
             text-decoration: none;
-            border-radius: 8px;
-            font-weight: 500;
-            transition: background-color 0.2s;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
             white-space: nowrap;
         }
-        .back-link:hover {
-            background: #5a6268;
-        }
-        .page-actions {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-            padding-top: 20px;
-            margin-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        .sorting-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .sorting-controls strong {
-            font-size: 14px;
-            font-weight: 600;
-            color: #333;
-        }
-        .sort-link {
-            text-decoration: none;
-            color: #007bff;
-            font-size: 14px;
-            padding: 6px 12px;
-            border-radius: 8px;
-            transition: background-color 0.2s, color 0.2s;
-            border: 1px solid #dee2e6;
-        }
-        .sort-link:hover {
-            background-color: #e9ecef;
-        }
-        .sort-link.active {
-            background-color: #007bff;
-            color: white;
-            border-color: #007bff;
-        }
-        .batch-actions {
-            display: flex;
-            gap: 10px;
-        }
-        .batch-btn {
-            padding: 10px 18px;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 14px;
-            transition: background-color 0.2s;
-        }
-        .batch-btn.show-all-btn { background-color: #28a745; }
-        .batch-btn.show-all-btn:hover { background-color: #218838; }
-        .batch-btn.hide-all-btn { background-color: #fd7e14; }
-        .batch-btn.hide-all-btn:hover { background-color: #e06200; }
-        .destructive-actions {
-            display: flex;
-            gap: 10px;
-        }
-        .destructive-btn {
-            padding: 10px 18px;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 14px;
-            transition: background-color 0.2s;
-        }
-        .destructive-btn:hover {
-            background: #c82333;
+        .hdr-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
         }
 
-        .photo-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 25px;
+        /* Filter & Search Bar */
+        .toolbar-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
         }
-        .photo-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            overflow: hidden;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        .filter-input {
+            flex: 1;
+            min-width: 180px;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-alt);
+            color: var(--text);
+            font-size: 13.5px;
+        }
+        .pill-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .sort-link, .qpill {
+            text-decoration: none;
+            color: var(--text);
+            background: var(--surface-alt);
+            font-size: 12.5px;
+            font-weight: 600;
+            padding: 7px 11px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+        }
+        .sort-link.active, .qpill.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        /* Collapsible Folder Management Tools */
+        .folder-tools-details {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            box-shadow: var(--shadow);
+        }
+        .folder-tools-details summary {
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 14px;
+            user-select: none;
+        }
+        .folder-tools-body {
+            margin-top: 12px;
             display: flex;
             flex-direction: column;
+            gap: 14px;
         }
-        .photo-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-        }
-        .photo-image-container {
-            position: relative;
-            width: 100%;
-            padding-top: 75%; /* 4:3 Aspect Ratio */
-        }
-        .photo-image-container img,
-        .photo-image-container video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .photo-image-container video {
-            object-fit: contain;
-            background-color: black;
-        }
-        .hidden-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255, 255, 255, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-        }
-        .hidden-icon {
-            font-size: 40px;
-            opacity: 0.8;
-        }
-        .photo-info {
-            padding: 12px 15px;
-            flex-grow: 1;
-        }
-        .photo-filename {
-            font-size: 14px;
-            color: #333;
-            margin: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .photo-card.is-hidden .photo-filename {
-            text-decoration: line-through;
-            color: #999;
-        }
-        .photo-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            padding: 0 15px 15px 15px;
-        }
-        .action-btn {
-            width: 100%;
-            padding: 9px;
+        .is-virtual .folder-only { display: none !important; }
+
+        .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .batch-btn {
+            padding: 9px 14px;
+            color: #fff;
+            border: none;
+            border-radius: 9px;
+            cursor: pointer;
+            font-weight: 700;
             font-size: 13px;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background-color 0.2s, transform 0.1s;
         }
-        .action-btn:active {
-            transform: scale(0.97);
-        }
-        .toggle-btn.show-btn { background: #28a745; }
-        .toggle-btn.show-btn:hover { background: #218838; }
-        .toggle-btn.hide-btn { background: #fd7e14; }
-        .toggle-btn.hide-btn:hover { background: #e06200; }
-        .delete-btn { background: #dc3545; }
-        .delete-btn:hover { background: #c82333; }
-        .no-photos-message {
-            color: #666;
-            padding: 40px;
-            font-size: 16px;
-        }
-        @media (max-width: 768px) {
-            body { padding: 15px; }
-            .header-top { flex-direction: column; align-items: flex-start; gap: 15px; }
-            .page-actions { flex-direction: column; align-items: stretch; text-align: center; }
-            .destructive-actions { justify-content: center; }
-            .photo-grid {
-                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-                gap: 15px;
-            }
-        }
-        @media (max-width: 480px) {
-            body { padding: 10px; }
-            .photo-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 12px;
-            }
-        }
-        
-        /* Fullscreen Overlay */
-        .fullscreen-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
-            z-index: 1000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-        }
-        .fullscreen-content {
-            max-width: 95vw;
-            max-height: 95vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .fullscreen-content img, .fullscreen-content video {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            border-radius: 5px;
-            cursor: default;
-        }
-        .close-btn-fullscreen {
-            position: absolute;
-            top: 20px;
-            right: 35px;
-            font-size: 40px;
-            color: white;
-            cursor: pointer;
-            transition: color 0.2s;
-            line-height: 1;
-        }
-        .close-btn-fullscreen:hover {
-            color: #ccc;
-        }
-
-        /* Upload Section Styles */
-        .upload-section {
-            background: white;
-            padding: 20px 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            margin-bottom: 25px;
-        }
-        .upload-form h3 {
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 18px;
-            font-weight: 600;
-        }
-        .upload-controls {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        .file-input {
-            display: none;
-        }
-        .file-label {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background-color 0.2s;
-        }
-        .file-label:hover {
-            background-color: #0056b3;
-        }
-        .upload-btn {
-            padding: 10px 20px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 14px;
-            transition: background-color 0.2s;
-        }
-        .upload-btn:hover {
-            background: #218838;
-        }
-        #file-list-container {
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 10px;
-            margin-top: 15px;
-            text-align: left;
-            background-color: #f9f9f9;
-        }
-        .file-item {
-            padding: 6px 10px;
-            font-size: 14px;
-            color: #333;
-            border-bottom: 1px solid #eee;
-        }
-        .file-item:last-child {
-            border-bottom: none;
-        }
-        .file-list {
-            margin-top: 15px;
-            font-size: 14px;
-            color: #555;
-        }
-
-        /* Folder Management Section */
-        .folder-management-section {
-            background: white;
-            padding: 20px 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            margin-bottom: 25px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 30px;
-            align-items: flex-start;
-        }
-        .folder-management-section h3 {
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 18px;
-            font-weight: 600;
-            width: 100%;
-        }
-        .create-subfolder-container {
-            flex: 1;
-            min-width: 300px;
-        }
-        .subfolder-list-container {
-            flex: 2;
-            min-width: 300px;
-        }
-        .subfolder-list-container h4 {
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 16px;
-            font-weight: 600;
-        }
-        .subfolder-controls {
-            display: flex;
-            gap: 10px;
-        }
-        .subfolder-input {
-            flex-grow: 1;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-        .subfolder-btn {
-            padding: 10px 20px;
-            background: #17a2b8;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background-color 0.2s;
-        }
-        .subfolder-btn:hover { background: #138496; }
+        .batch-btn.show-all-btn { background: var(--success); }
+        .batch-btn.hide-all-btn { background: var(--warning); }
+        .batch-btn.destructive-btn { background: var(--danger); }
+        .batch-btn.info-btn { background: var(--primary); }
 
         .subfolder-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
         }
         .subfolder-link {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 15px;
-            background-color: #f8f9fa;
+            gap: 8px;
+            padding: 10px 12px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            text-decoration: none;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .subfolder-link.is-hidden { opacity: 0.55; text-decoration: line-through; }
+
+        .truncation-banner {
+            background: rgba(76, 110, 245, 0.12);
+            border: 1px solid rgba(76, 110, 245, 0.3);
+            padding: 10px 14px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .mini-link-btn {
+            padding: 6px 12px;
+            background: var(--primary);
+            color: #fff;
             border-radius: 8px;
             text-decoration: none;
-            color: #333;
-            transition: background-color 0.2s, box-shadow 0.2s;
-            border: 1px solid #e9ecef;
+            font-weight: 700;
+            font-size: 12.5px;
         }
-        .subfolder-link:hover {
-            background-color: #e9ecef;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+
+        /* Photo Grid */
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
         }
-        .subfolder-icon { font-size: 24px; color: #5dade2; }
-        .subfolder-name {
-            font-weight: 500;
+        @media (min-width: 600px) {
+            .photo-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+        }
+        .photo-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 13px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        .photo-card.is-selected {
+            border: 2.5px solid var(--primary);
+            transform: scale(0.98);
+        }
+        .photo-image-container {
+            position: relative;
+            width: 100%;
+            padding-top: 78%;
+            background: #111;
+            cursor: pointer;
+        }
+        .card-media {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        video.card-media { object-fit: contain; }
+
+        .select-check {
+            display: none;
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 26px;
+            height: 26px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #fff;
+            color: transparent;
+            font-size: 15px;
+            font-weight: 900;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+        }
+        body.select-mode .select-check { display: flex; }
+        .photo-card.is-selected .select-check {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+        .video-indicator {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .fav-corner-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(0, 0, 0, 0.68);
+            color: #ffd43b;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            z-index: 3;
+        }
+        .hidden-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 20, 30, 0.62);
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 700;
+            font-size: 13px;
+            z-index: 2;
+        }
+
+        .photo-meta {
+            padding: 8px 10px 6px;
+            flex: 1;
+        }
+        .photo-name {
+            font-size: 12.5px;
+            font-weight: 600;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .subfolder-link.is-hidden { opacity: 0.6; }
-        .subfolder-link.is-hidden .subfolder-name { text-decoration: line-through; }
+        .photo-card.is-hidden .photo-name {
+            text-decoration: line-through;
+            color: var(--muted);
+        }
+        .photo-date {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+        .photo-folder-tag {
+            font-size: 10.5px;
+            color: var(--primary);
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .photo-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            padding: 0 8px 8px;
+        }
+        body.select-mode .photo-actions { pointer-events: none; opacity: 0.4; }
+        .action-btn {
+            padding: 7px 4px;
+            font-size: 11.5px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            color: #fff;
+        }
+        .cast-btn { background: #4c6ef5; }
+        .fav-btn { background: var(--surface-alt); color: var(--muted); border: 1px solid var(--border); }
+        .fav-btn.is-fav { background: #f59f00; color: #111; border-color: #f59f00; }
+        .toggle-btn.show-btn { background: var(--success); }
+        .toggle-btn.hide-btn { background: var(--warning); }
+        .delete-btn { background: var(--danger); }
+
+        .no-photos-message {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: var(--muted);
+            padding: 40px 16px;
+            font-size: 15px;
+        }
+
+        /* Sticky Batch Action Bar */
+        #batch-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+            display: none;
+            z-index: 500;
+            box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.16);
+        }
+        .batch-bar-inner {
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .batch-count-label { font-size: 13.5px; font-weight: 800; }
+        .batch-bar-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+        .bb-btn {
+            padding: 8px 11px;
+            border-radius: 9px;
+            border: none;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        /* Fullscreen Swipe Lightbox */
+        .fullscreen-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.96);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            user-select: none;
+        }
+        .fs-top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            color: #fff;
+            background: linear-gradient(180deg, rgba(0,0,0,0.75), transparent);
+            z-index: 1005;
+        }
+        .fs-info { min-width: 0; }
+        .fs-counter { font-size: 12px; color: #adb5bd; font-weight: 700; }
+        .fs-title {
+            font-size: 14px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 72vw;
+        }
+        .fs-close-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 999px;
+            border: none;
+            background: rgba(255, 255, 255, 0.16);
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .fs-stage {
+            position: relative;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: 6px 12px;
+        }
+        .fs-stage img, .fs-stage video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 6px;
+        }
+        .fs-nav-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 44px;
+            height: 56px;
+            border: none;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 28px;
+            cursor: pointer;
+            z-index: 1004;
+        }
+        .fs-nav-prev { left: 10px; }
+        .fs-nav-next { right: 10px; }
+        .fs-bottom-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+            background: linear-gradient(0deg, rgba(0,0,0,0.82), transparent);
+            z-index: 1005;
+        }
+        .fs-act-btn {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.18);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .fs-act-btn.blue { background: #4c6ef5; }
+        .fs-act-btn.gold { background: #f59f00; color: #111; }
+        .fs-act-btn.green { background: #2b8a3e; }
+
+        /* Toast */
+        #cast-toast {
+            position: fixed;
+            bottom: calc(24px + env(safe-area-inset-bottom));
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(17, 24, 39, 0.94);
+            color: #fff;
+            padding: 11px 20px;
+            border-radius: 999px;
+            font-size: 13.5px;
+            font-weight: 600;
+            display: none;
+            z-index: 20000;
+            max-width: 90vw;
+            text-align: center;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+        }
     </style>
 </head>
-<body>
+<body class="{{isVirtualClass}}">
     <div class="main-container">
+        {{virtualTabsHtml}}
+
         <div class="page-header">
             <div class="header-top">
-                <h2 class="page-title">🖼️ {{displayName}}</h2>
-                <a href="/" class="back-link">⬅️ 뒤로 가기</a>
-            </div>
-            <div class="page-actions">
-                    <div class="sorting-controls">
-                    <strong>정렬:</strong>
-                    {{sortLinks}}
+                <h2 class="page-title">{{displayName}}<span class="count-badge" id="visible-count-badge">({{shownCount}} / {{totalCount}})</span></h2>
+                <div class="header-btns">
+                    <button type="button" id="select-mode-btn" class="hdr-btn" onclick="toggleSelectMode()">☑️ 선택</button>
+                    <a href="/#folders" class="hdr-btn">⬅️ 홈</a>
                 </div>
-                <div class="batch-actions">
-                        <form action="/manage/show-all-photos" method="post" style="margin: 0;">
+            </div>
+
+            <div class="toolbar-row">
+                <input type="search" id="quick-search" class="filter-input" value="{{queryText}}" placeholder="🔍 현재 목록에서 파일명·날짜 필터..." oninput="applyClientFilter()">
+                <div class="pill-group" id="quick-filter-pills">
+                    <button type="button" class="qpill active" data-qf="all" onclick="setQuickFilter('all')">전체</button>
+                    <button type="button" class="qpill" data-qf="fav" onclick="setQuickFilter('fav')">⭐ 즐겨찾기</button>
+                    <button type="button" class="qpill" data-qf="hidden" onclick="setQuickFilter('hidden')">🙈 숨김</button>
+                    <button type="button" class="qpill" data-qf="video" onclick="setQuickFilter('video')">🎬 동영상</button>
+                </div>
+            </div>
+
+            <div class="toolbar-row">
+                <span style="font-size:12.5px;font-weight:700;color:var(--muted);">정렬:</span>
+                <div class="pill-group">{{sortLinks}}</div>
+            </div>
+        </div>
+
+        <details class="folder-tools-details folder-only">
+            <summary>⚙️ 폴더 관리 · 이 폴더에 바로 업로드</summary>
+            <div class="folder-tools-body">
+                <div>
+                    <div style="font-size:13px;font-weight:700;margin-bottom:8px;">📂 이 폴더에 사진/동영상 바로 추가</div>
+                    <div class="btn-row">
+                        <input type="file" id="folder-upload-input" accept="image/*,video/*,.heic,.heif" multiple style="display:none;">
+                        <button type="button" class="batch-btn info-btn" onclick="document.getElementById('folder-upload-input').click()">➕ 파일 선택</button>
+                        <button type="button" id="folder-upload-btn" class="batch-btn show-all-btn" onclick="uploadToCurrentFolder()" style="display:none;">🚀 업로드</button>
+                        <span id="folder-upload-status" style="font-size:13px;color:var(--muted);align-self:center;"></span>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🌱 하위 폴더 만들기</div>
+                    <form action="/manage/create-subfolder" method="post" class="btn-row" style="margin:0;">
+                        <input type="hidden" name="parentFolder" value="{{folderName}}">
+                        <input type="text" name="subfolderName" required class="filter-input" placeholder="새 하위 폴더명 입력">
+                        <button type="submit" class="batch-btn info-btn">만들기</button>
+                    </form>
+                    {{subfolderListHtml}}
+                </div>
+
+                <div class="btn-row">
+                    <form action="/manage/show-all-photos" method="post" style="margin:0;">
                         <input type="hidden" name="folderName" value="{{folderName}}">
                         <button type="submit" class="batch-btn show-all-btn">모두 보이기</button>
                     </form>
-                    <form action="/manage/hide-all-photos" method="post" style="margin: 0;">
+                    <form action="/manage/hide-all-photos" method="post" style="margin:0;">
                         <input type="hidden" name="folderName" value="{{folderName}}">
                         <button type="submit" class="batch-btn hide-all-btn">모두 숨기기</button>
                     </form>
-                </div>
-                <div class="destructive-actions">
-                    <form action="/manage/delete-all-photos" method="post" onsubmit="return confirm('이 폴더의 모든 사진을 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.');" style="margin: 0;">
+                    <form action="/manage/delete-all-photos" method="post" onsubmit="return confirm('이 폴더의 모든 사진을 정말 삭제하시겠습니까?');" style="margin:0;">
                         <input type="hidden" name="folderName" value="{{folderName}}">
-                        <button type="submit" class="destructive-btn">모든 사진 삭제</button>
+                        <button type="submit" class="batch-btn destructive-btn">모든 사진 삭제</button>
                     </form>
-                    <form action="/manage/delete-folder" method="post" onsubmit="return confirm('정말 이 폴더와 모든 하위 내용(사진, 하위 폴더)을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다!');" style="margin: 0;">
+                    <form action="/manage/delete-folder" method="post" onsubmit="return confirm('이 폴더와 하위 내용을 모두 삭제하시겠습니까?');" style="margin:0;">
                         <input type="hidden" name="folderName" value="{{folderName}}">
-                        <button type="submit" class="destructive-btn">폴더 삭제</button>
+                        <button type="submit" class="batch-btn destructive-btn">폴더 삭제</button>
                     </form>
                 </div>
             </div>
-        </div>
+        </details>
 
-        <div class="folder-management-section">
-            <div class="create-subfolder-container">
-                <h3>🌱 하위 폴더 관리</h3>
-                <form action="/manage/create-subfolder" method="post" class="subfolder-form">
-                    <input type="hidden" name="parentFolder" value="{{folderName}}">
-                    <div class="subfolder-controls">
-                        <input type="text" name="subfolderName" required class="subfolder-input" placeholder="새 하위 폴더명 입력">
-                        <button type="submit" class="subfolder-btn">만들기</button>
-                    </div>
-                </form>
-            </div>
-            {{subfolderListHtml}}
-        </div>
+        {{truncatedNoticeHtml}}
 
-        <div class="upload-section">
-            <form action="/upload" method="post" enctype="multipart/form-data" class="upload-form">
-                <h3>📂 이 폴더에 사진/동영상 추가</h3>
-                <input type="hidden" name="folderName" value="{{folderName}}">
-                <div class="upload-controls">
-                    <input type="file" name="photos" id="photos" multiple required class="file-input">
-                    <label for="photos" class="file-label">파일 선택...</label>
-                    <button type="submit" class="upload-btn">업로드</button>
-                </div>
-                 <div id="file-list-container"></div>
-            </form>
-        </div>
-
-        <div class="photo-grid">
+        <div class="photo-grid" id="photo-grid">
             {{photoListHtml}}
         </div>
     </div>
 
-    <div id="fullscreen-overlay" class="fullscreen-overlay" style="display: none;" onclick="closeFullscreen(event)">
-        <span class="close-btn-fullscreen" onclick="closeFullscreen()">&times;</span>
-        <div id="fullscreen-content" class="fullscreen-content"></div>
-        <div id="fullscreen-cast-bar" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:10002;" onclick="event.stopPropagation()">
-            <button type="button" onclick="castCurrentFullscreen(false)" style="padding:11px 18px;border:none;border-radius:999px;background:#007bff;color:#fff;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);">📺 액자에 띄우기</button>
-            <button type="button" onclick="castCurrentFullscreen(true)" style="padding:11px 18px;border:none;border-radius:999px;background:#f59f00;color:#111;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);">📌 띄우고 고정</button>
+    <!-- Batch Action Bar -->
+    <div id="batch-bar">
+        <div class="batch-bar-inner">
+            <span class="batch-count-label" id="batch-count-label">0개 선택됨</span>
+            <div class="batch-bar-btns">
+                <button type="button" class="bb-btn" style="background:#495057;" onclick="selectAllVisible()">전체선택</button>
+                <button type="button" class="bb-btn" style="background:#f59f00;color:#111;" onclick="runBatchAction('favorite')">⭐ 즐겨찾기</button>
+                <button type="button" class="bb-btn" style="background:#f08c00;" onclick="runBatchAction('hide')">🙈 숨기기</button>
+                <button type="button" class="bb-btn" style="background:#2b8a3e;" onclick="runBatchAction('show')">👁️ 보이기</button>
+                <button type="button" class="bb-btn" style="background:#e03131;" onclick="runBatchAction('delete')">🗑️ 삭제</button>
+                <button type="button" class="bb-btn" style="background:#868e96;" onclick="toggleSelectMode(false)">취소</button>
+            </div>
         </div>
     </div>
-    <div id="cast-toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(20,20,25,0.9);color:#fff;padding:12px 20px;border-radius:999px;font-size:14px;font-weight:600;display:none;z-index:20000;box-shadow:0 4px 16px rgba(0,0,0,0.35);"></div>
+
+    <!-- Fullscreen Swipe Lightbox -->
+    <div id="fullscreen-overlay" class="fullscreen-overlay">
+        <div class="fs-top-bar">
+            <div class="fs-info">
+                <div class="fs-counter" id="fs-counter">- / -</div>
+                <div class="fs-title" id="fs-title"></div>
+            </div>
+            <button type="button" class="fs-close-btn" onclick="closeFullscreen()">&times;</button>
+        </div>
+        <div class="fs-stage" id="fs-stage" onclick="closeFullscreen()">
+            <button type="button" class="fs-nav-arrow fs-nav-prev" onclick="event.stopPropagation(); stepFullscreen(-1)">‹</button>
+            <div id="fullscreen-content" onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;"></div>
+            <button type="button" class="fs-nav-arrow fs-nav-next" onclick="event.stopPropagation(); stepFullscreen(1)">›</button>
+        </div>
+        <div class="fs-bottom-bar" onclick="event.stopPropagation()">
+            <button type="button" class="fs-act-btn blue" onclick="castCurrentFullscreen(false)">📺 액자에 띄우기</button>
+            <button type="button" class="fs-act-btn gold" onclick="castCurrentFullscreen(true)">📌 띄우고 고정</button>
+            <button type="button" id="fs-rotate-btn" class="fs-act-btn" onclick="rotateCurrentFullscreen()">🔄 90° 회전</button>
+            <a id="fs-download-link" class="fs-act-btn green" href="#" download>⬇️ 원본 저장</a>
+            <button type="button" id="fs-fav-btn" class="fs-act-btn" onclick="toggleFavCurrentFullscreen()">☆</button>
+        </div>
+    </div>
+
+    <div id="cast-toast"></div>
 
     <script>
-        let currentFullscreenRelPath = null;
+        const CURRENT_FOLDER = "{{folderName}}";
+        let activeQuickFilter = 'all';
+        let selectMode = false;
+        let selectedSet = new Set();
+        let fsVisibleCards = [];
+        let fsIndex = -1;
         let toastTimer = null;
 
-        function showCastToast(msg) {
+        // Apply saved theme
+        (function initTheme() {
+            const saved = localStorage.getItem('mmip_theme');
+            if (saved === 'dark' || saved === 'light') {
+                document.documentElement.setAttribute('data-theme', saved);
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+
+        function showToast(msg) {
             const el = document.getElementById('cast-toast');
             if (!el) return;
             el.textContent = msg;
@@ -532,9 +707,162 @@
             toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2600);
         }
 
+        function getAllCards() {
+            return Array.from(document.querySelectorAll('#photo-grid .photo-card'));
+        }
+        function getVisibleCards() {
+            return getAllCards().filter((c) => c.style.display !== 'none');
+        }
+
+        // --- Quick Search & Filter ---
+        function setQuickFilter(qf) {
+            activeQuickFilter = qf;
+            document.querySelectorAll('#quick-filter-pills .qpill').forEach((b) => {
+                b.classList.toggle('active', b.dataset.qf === qf);
+            });
+            applyClientFilter();
+        }
+
+        function applyClientFilter() {
+            const q = (document.getElementById('quick-search').value || '').trim().toLowerCase();
+            const cards = getAllCards();
+            let visible = 0;
+            cards.forEach((card) => {
+                let ok = true;
+                if (activeQuickFilter === 'fav' && card.dataset.fav !== '1') ok = false;
+                if (activeQuickFilter === 'hidden' && card.dataset.hidden !== '1') ok = false;
+                if (activeQuickFilter === 'video' && card.dataset.video !== '1') ok = false;
+                if (ok && q) {
+                    const hay = `${card.dataset.name} ${card.dataset.date} ${card.dataset.folder} ${card.dataset.rel}`.toLowerCase();
+                    if (!hay.includes(q)) ok = false;
+                }
+                card.style.display = ok ? 'flex' : 'none';
+                if (ok) visible++;
+            });
+            const badge = document.getElementById('visible-count-badge');
+            if (badge) badge.textContent = `(${visible} / ${cards.length})`;
+        }
+
+        // --- Batch Selection Mode ---
+        function toggleSelectMode(force) {
+            selectMode = typeof force === 'boolean' ? force : !selectMode;
+            document.body.classList.toggle('select-mode', selectMode);
+            document.getElementById('select-mode-btn').classList.toggle('active', selectMode);
+            document.getElementById('batch-bar').style.display = selectMode ? 'block' : 'none';
+            if (!selectMode) {
+                selectedSet.clear();
+                getAllCards().forEach((c) => c.classList.remove('is-selected'));
+            }
+            updateBatchCount();
+        }
+
+        function updateBatchCount() {
+            const lbl = document.getElementById('batch-count-label');
+            if (lbl) lbl.textContent = `${selectedSet.size}개 선택됨`;
+        }
+
+        function selectAllVisible() {
+            const vis = getVisibleCards();
+            const allSelected = vis.length > 0 && vis.every((c) => selectedSet.has(c.dataset.rel));
+            vis.forEach((c) => {
+                if (allSelected) {
+                    selectedSet.delete(c.dataset.rel);
+                    c.classList.remove('is-selected');
+                } else {
+                    selectedSet.add(c.dataset.rel);
+                    c.classList.add('is-selected');
+                }
+            });
+            updateBatchCount();
+        }
+
+        function handleCardImageClick(card) {
+            if (!card) return;
+            if (selectMode) {
+                const rel = card.dataset.rel;
+                if (selectedSet.has(rel)) {
+                    selectedSet.delete(rel);
+                    card.classList.remove('is-selected');
+                } else {
+                    selectedSet.add(rel);
+                    card.classList.add('is-selected');
+                }
+                updateBatchCount();
+            } else {
+                openFullscreenForCard(card);
+            }
+        }
+
+        async function runBatchAction(action) {
+            const relPaths = Array.from(selectedSet);
+            if (relPaths.length === 0) return showToast('먼저 사진을 선택해 주세요.');
+            if (action === 'delete' && !confirm(`선택한 ${relPaths.length}개 파일을 정말 삭제하시겠습니까?`)) return;
+
+            showToast(`⏳ ${relPaths.length}개 처리 중...`);
+            try {
+                const res = await fetch('/manage/api/photos/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, relPaths })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '처리 실패');
+
+                const map = new Map();
+                (data.results || []).forEach((r) => map.set(r.oldRelPath, r));
+
+                getAllCards().forEach((card) => {
+                    const r = map.get(card.dataset.rel);
+                    if (!r) return;
+                    if (r.deleted) {
+                        card.remove();
+                    } else if (action === 'favorite' || action === 'unfavorite') {
+                        applyCardFavDom(card, Boolean(r.isFavorite));
+                    } else if (action === 'hide' || action === 'show') {
+                        applyCardHideDom(card, r);
+                    }
+                });
+
+                toggleSelectMode(false);
+                applyClientFilter();
+                showToast(`✅ ${data.count}개 항목 처리 완료!`);
+            } catch (err) {
+                showToast(`❌ 일괄 처리 실패: ${err.message}`);
+            }
+        }
+
+        // --- Zero-Reload Single Card Actions ---
+        function applyCardFavDom(card, isFav) {
+            card.dataset.fav = isFav ? '1' : '0';
+            const btn = card.querySelector('.fav-btn');
+            if (btn) {
+                btn.classList.toggle('is-fav', isFav);
+                btn.textContent = isFav ? '★' : '☆';
+            }
+            const badge = card.querySelector('.fav-corner-badge');
+            if (badge) badge.style.display = isFav ? 'block' : 'none';
+        }
+
+        function applyCardHideDom(card, r) {
+            card.dataset.rel = r.newRelPath;
+            card.dataset.url = r.fullUrl;
+            card.dataset.thumb = r.thumbUrl;
+            card.dataset.download = r.downloadUrl;
+            card.dataset.hidden = r.isHidden ? '1' : '0';
+            card.classList.toggle('is-hidden', r.isHidden);
+            const btn = card.querySelector('.toggle-btn');
+            if (btn) {
+                btn.classList.toggle('show-btn', r.isHidden);
+                btn.classList.toggle('hide-btn', !r.isHidden);
+                btn.textContent = r.isHidden ? '보이기' : '숨기기';
+            }
+            const ov = card.querySelector('.hidden-overlay');
+            if (ov) ov.style.display = r.isHidden ? 'flex' : 'none';
+        }
+
         async function castToFrame(relPath, pause) {
             if (!relPath) return;
-            showCastToast('⏳ 액자에 전송 중...');
+            showToast('⏳ 액자에 전송 중...');
             try {
                 const res = await fetch('/manage/api/show-photo', {
                     method: 'POST',
@@ -543,87 +871,255 @@
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || '전송 실패');
-                showCastToast(pause ? '📌 액자에 띄우고 일시정지 고정했습니다!' : '📺 액자에 바로 띄웠습니다!');
+                showToast(pause ? '📌 액자에 띄우고 일시정지 고정했습니다!' : '📺 액자에 바로 띄웠습니다!');
             } catch (err) {
-                showCastToast(`❌ 실패: ${err.message}`);
+                showToast(`❌ 실패: ${err.message}`);
             }
         }
 
-        function castCurrentFullscreen(pause) {
-            if (currentFullscreenRelPath) {
-                castToFrame(currentFullscreenRelPath, pause);
+        function castCard(btn) {
+            const card = btn.closest('.photo-card');
+            if (card) castToFrame(card.dataset.rel, false);
+        }
+
+        async function toggleFavCard(btn) {
+            const card = btn.closest('.photo-card');
+            if (!card) return;
+            btn.disabled = true;
+            try {
+                const res = await fetch('/manage/api/photo/favorite', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relPath: card.dataset.rel })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                applyCardFavDom(card, Boolean(data.isFavorite));
+                showToast(data.isFavorite ? '⭐ 즐겨찾기에 추가했습니다.' : '☆ 즐겨찾기를 해제했습니다.');
+            } catch (err) {
+                showToast(`❌ 실패: ${err.message}`);
+            } finally {
+                btn.disabled = false;
             }
         }
 
-        function openFullscreen(url, ext, relPath) {
-            currentFullscreenRelPath = relPath || null;
-            const overlay = document.getElementById('fullscreen-overlay');
+        async function toggleHideCard(btn) {
+            const card = btn.closest('.photo-card');
+            if (!card) return;
+            btn.disabled = true;
+            try {
+                const res = await fetch('/manage/api/photo/toggle-hide', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relPath: card.dataset.rel })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                applyCardHideDom(card, data);
+                showToast(data.isHidden ? '🙈 슬라이드에서 숨겼습니다.' : '👁️ 다시 보이게 했습니다.');
+            } catch (err) {
+                showToast(`❌ 실패: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteCard(btn) {
+            const card = btn.closest('.photo-card');
+            if (!card) return;
+            if (!confirm(`"${card.dataset.name}" 파일을 정말 삭제하시겠습니까?`)) return;
+            btn.disabled = true;
+            try {
+                const res = await fetch('/manage/api/photo/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relPath: card.dataset.rel })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                card.remove();
+                applyClientFilter();
+                showToast('🗑️ 파일을 삭제했습니다.');
+            } catch (err) {
+                showToast(`❌ 삭제 실패: ${err.message}`);
+                btn.disabled = false;
+            }
+        }
+
+        // --- Fullscreen Swipe Lightbox ---
+        function renderFullscreenAt(idx) {
+            if (idx < 0 || idx >= fsVisibleCards.length) return;
+            fsIndex = idx;
+            const card = fsVisibleCards[fsIndex];
             const content = document.getElementById('fullscreen-content');
-            content.innerHTML = ''; // Clear previous content
+            content.innerHTML = '';
 
-            let element;
-            const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov'];
-
-            if (videoExtensions.includes(ext.toLowerCase())) {
-                element = document.createElement('video');
-                element.src = url;
-                element.controls = true;
-                element.autoplay = true;
-                element.playsInline = true;
-            } else {
-                element = document.createElement('img');
-                element.src = url;
+            const isVideo = card.dataset.video === '1';
+            const el = document.createElement(isVideo ? 'video' : 'img');
+            el.src = card.dataset.url;
+            if (isVideo) {
+                el.controls = true;
+                el.autoplay = true;
+                el.playsInline = true;
             }
+            content.appendChild(el);
 
-            element.onclick = (e) => e.stopPropagation(); // Prevent closing when clicking on the media
-            content.appendChild(element);
-            overlay.style.display = 'flex';
-            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            document.getElementById('fs-counter').textContent = `${fsIndex + 1} / ${fsVisibleCards.length} · 🗓️ ${card.dataset.date || '-'}`;
+            document.getElementById('fs-title').textContent = card.dataset.name;
+            document.getElementById('fs-download-link').href = card.dataset.download;
+            document.getElementById('fs-rotate-btn').style.display = card.dataset.rotatable === '1' ? 'inline-flex' : 'none';
+
+            const fsFav = document.getElementById('fs-fav-btn');
+            const isFav = card.dataset.fav === '1';
+            fsFav.textContent = isFav ? '★ 즐겨찾기' : '☆ 즐겨찾기';
+            fsFav.classList.toggle('gold', isFav);
         }
 
-        function closeFullscreen(event) {
-            // Check if the click is on the overlay itself, not on the content
-            if (event && event.target.id !== 'fullscreen-overlay' && event.target.className !== 'close-btn-fullscreen') {
-                return;
-            }
+        function openFullscreenForCard(card) {
+            fsVisibleCards = getVisibleCards();
+            const idx = fsVisibleCards.indexOf(card);
+            if (idx === -1) return;
+            document.getElementById('fullscreen-overlay').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            renderFullscreenAt(idx);
+        }
+
+        function stepFullscreen(delta) {
+            if (fsVisibleCards.length === 0) return;
+            const next = (fsIndex + delta + fsVisibleCards.length) % fsVisibleCards.length;
+            renderFullscreenAt(next);
+        }
+
+        function closeFullscreen() {
             const overlay = document.getElementById('fullscreen-overlay');
-            const content = document.getElementById('fullscreen-content');
             overlay.style.display = 'none';
-            content.innerHTML = ''; // Important: remove video/img to stop playback
+            document.getElementById('fullscreen-content').innerHTML = '';
             document.body.style.overflow = 'auto';
         }
 
-        // Close fullscreen with Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === "Escape") {
-                const overlay = document.getElementById('fullscreen-overlay');
-                if (overlay.style.display !== 'none') {
-                    closeFullscreen();
-                }
+        function castCurrentFullscreen(pause) {
+            const card = fsVisibleCards[fsIndex];
+            if (card) castToFrame(card.dataset.rel, pause);
+        }
+
+        async function toggleFavCurrentFullscreen() {
+            const card = fsVisibleCards[fsIndex];
+            if (!card) return;
+            const btn = card.querySelector('.fav-btn');
+            if (btn) {
+                await toggleFavCard(btn);
+                const isFav = card.dataset.fav === '1';
+                const fsFav = document.getElementById('fs-fav-btn');
+                fsFav.textContent = isFav ? '★ 즐겨찾기' : '☆ 즐겨찾기';
+                fsFav.classList.toggle('gold', isFav);
             }
+        }
+
+        async function rotateCurrentFullscreen() {
+            const card = fsVisibleCards[fsIndex];
+            if (!card) return;
+            const rotBtn = document.getElementById('fs-rotate-btn');
+            rotBtn.disabled = true;
+            showToast('🔄 90° 회전 저장 중...');
+            try {
+                const res = await fetch('/manage/api/photo/rotate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ relPath: card.dataset.rel, angle: 90 })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '회전 실패');
+                card.dataset.url = data.fullUrl;
+                card.dataset.thumb = data.thumbUrl;
+                const thumbImg = card.querySelector('img.card-media');
+                if (thumbImg) thumbImg.src = data.thumbUrl;
+                renderFullscreenAt(fsIndex);
+                showToast('✅ 시계방향 90° 회전 저장 완료!');
+            } catch (err) {
+                showToast(`❌ 회전 실패: ${err.message}`);
+            } finally {
+                rotBtn.disabled = false;
+            }
+        }
+
+        // Touch swipe inside lightbox
+        let touchStartX = 0;
+        let touchStartY = 0;
+        const fsStage = document.getElementById('fs-stage');
+        if (fsStage) {
+            fsStage.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+            fsStage.addEventListener('touchend', (e) => {
+                if (e.changedTouches.length === 1) {
+                    const dx = e.changedTouches[0].clientX - touchStartX;
+                    const dy = e.changedTouches[0].clientY - touchStartY;
+                    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+                        stepFullscreen(dx < 0 ? 1 : -1);
+                    }
+                }
+            }, { passive: true });
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const overlay = document.getElementById('fullscreen-overlay');
+            if (overlay.style.display === 'none') return;
+            if (e.key === 'Escape') closeFullscreen();
+            if (e.key === 'ArrowLeft') stepFullscreen(-1);
+            if (e.key === 'ArrowRight') stepFullscreen(1);
         });
 
-        // File upload list display
-        const fileInput = document.getElementById('photos');
-        const fileListContainer = document.getElementById('file-list-container');
-        if (fileInput && fileListContainer) {
-            fileInput.addEventListener('change', function() {
-                fileListContainer.innerHTML = ''; // Clear previous list
-
-                if (this.files && this.files.length > 0) {
-                    fileListContainer.style.display = 'block';
-                    for (const file of this.files) {
-                        const fileItem = document.createElement('div');
-                        fileItem.className = 'file-item';
-                        fileItem.textContent = `📄 ${file.name}`;
-                        fileListContainer.appendChild(fileItem);
-                    }
-                } else {
-                    fileListContainer.style.display = 'none';
-                }
+        // --- Folder Inline Ajax Upload ---
+        const folderUploadInput = document.getElementById('folder-upload-input');
+        const folderUploadBtn = document.getElementById('folder-upload-btn');
+        const folderUploadStatus = document.getElementById('folder-upload-status');
+        if (folderUploadInput) {
+            folderUploadInput.addEventListener('change', () => {
+                const count = folderUploadInput.files ? folderUploadInput.files.length : 0;
+                folderUploadBtn.style.display = count > 0 ? 'inline-block' : 'none';
+                folderUploadStatus.textContent = count > 0 ? `${count}개 선택됨` : '';
             });
-            // Initially hide container
-            fileListContainer.style.display = 'none';
+        }
+
+        function uploadToCurrentFolder() {
+            if (!folderUploadInput || !folderUploadInput.files || folderUploadInput.files.length === 0) return;
+            const fd = new FormData();
+            fd.append('folderName', CURRENT_FOLDER);
+            Array.from(folderUploadInput.files).forEach((f) => fd.append('photos', f));
+            folderUploadBtn.disabled = true;
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    folderUploadStatus.textContent = pct >= 100 ? '⚙️ 처리 중...' : `업로드 ${pct}%`;
+                }
+            };
+            xhr.onload = () => {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+                        showToast(`✅ ${data.movedCount}개 업로드 완료! 목록을 새로고침합니다.`);
+                        setTimeout(() => location.reload(), 900);
+                        return;
+                    }
+                    throw new Error(data.error || '업로드 실패');
+                } catch (err) {
+                    showToast(`❌ ${err.message}`);
+                    folderUploadBtn.disabled = false;
+                }
+            };
+            xhr.onerror = () => {
+                showToast('❌ 네트워크 오류');
+                folderUploadBtn.disabled = false;
+            };
+            xhr.send(fd);
         }
     </script>
 </body>

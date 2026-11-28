@@ -2,7 +2,7 @@
 
 이 문서는 라즈베리파이 전자 액자용 커스텀 `MMM-ImagesPhotos` 모듈의 구조, 확정된 사용자 선호 규칙, 캐시/API 설계, 주의사항을 정리한 기준 문서입니다.
 
-*마지막 수정일: 2026-11-25*
+*마지막 수정일: 2026-11-28*
 
 ---
 
@@ -28,7 +28,9 @@ MMM-ImagesPhotos/
 │   ├── display-state.json
 │   └── thumbs/
 └── uploadServer/             # 독립 모바일 웹 서버 (포트 8999, PM2: mmm-images-upload-server)
-    ├── index.js              # Express 진입점, /qr(로컬 PNG), /thumb/*(360px 캐시), /uploads
+    ├── index.js              # Express 진입점, PWA(/manifest.json, /icon-*), /download/*, /qr, /thumb/*, /uploads
+    ├── prewarm-thumbs.js     # 전체 미생성 360px 썸네일 일괄 사전 생성 유틸 (Node SHA-1 + Pillow 3워커)
+    ├── public/               # PWA 앱 아이콘 PNG (icon-192.png, icon-512.png)
     ├── routes/
     │   ├── main.js           # 메인 페이지(/), 다중 업로드(/upload, HEIC->JPG, 비동기 동영상 큐)
     │   └── management.js     # 폴더/사진 관리(/manage/*), 리모컨·밝기·필터·즉시띄우기 API, 상태 대시보드
@@ -39,8 +41,8 @@ MMM-ImagesPhotos/
     │   ├── video-queue.js    # 동영상 백그라운드 순차 변환 큐 & 완료 시 무중단 갱신
     │   └── view-renderer.js  # HTML 템플릿({{placeholder}}) 렌더러
     └── views/
-        ├── index.html        # 리모컨(재생/필터/속도/밝기/갤러리모드) + 업로드 + 시스템 대시보드 + 폴더 관리
-        └── manage-photos.html # 폴더별 썸네일 그리드 + EXIF 정렬 + 즐겨찾기 + 즉시 액자 띄우기(고정 포함)
+        ├── index.html        # PWA + 하단 4탭(리모컨/업로드/앨범/상태) + 다크모드 + 2장 Now Playing + XHR 업로드 진행바
+        └── manage-photos.html # 가상앨범·검색 + Ajax 무새로고침 + 스와이프 뷰어 + 90° 회전 + 일괄 선택 + 즉시 띄우기
 ```
 
 ---

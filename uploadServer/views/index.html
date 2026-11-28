@@ -1,205 +1,1015 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>매직미러 사진 관리 & 리모컨</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#4c6ef5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="가족 액자">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <title>가족 액자 리모컨 & 사진 관리</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; text-align: center; padding: 16px; background-color: #f4f5f9; max-width: 780px; margin: 0 auto; color: #222; }
-        .container { background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.07); margin-bottom: 18px; }
-        h2, h3 { color: #222; margin-top: 0; margin-bottom: 14px; }
-        input[type="file"] { margin-bottom: 16px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; width: 100%; box-sizing: border-box; background: #fafafa; }
+        :root {
+            --bg: #f3f5fa;
+            --surface: #ffffff;
+            --surface-alt: #f8f9fd;
+            --border: #e4e8f1;
+            --text: #1b2230;
+            --muted: #647087;
+            --primary: #4c6ef5;
+            --primary-dark: #3b5bdb;
+            --success: #2b8a3e;
+            --warning: #f08c00;
+            --danger: #e03131;
+            --purple: #7048e8;
+            --shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+            --tab-bg: rgba(255, 255, 255, 0.94);
+        }
+        [data-theme="dark"] {
+            --bg: #0f141e;
+            --surface: #182030;
+            --surface-alt: #202a3d;
+            --border: #2c3850;
+            --text: #eef2f8;
+            --muted: #9aa7bd;
+            --primary: #5c7cfa;
+            --primary-dark: #4c6ef5;
+            --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+            --tab-bg: rgba(24, 32, 48, 0.94);
+        }
 
-        .upload-btn { padding: 15px 30px; font-size: 17px; background: #007BFF; color: white; border: none; border-radius: 10px; font-weight: bold; width: 100%; cursor: pointer; transition: background-color 0.2s; }
-        .upload-btn:hover { background: #0056b3; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0;
+            padding: 0 0 calc(78px + env(safe-area-inset-bottom)) 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
 
-        .toolbar-btn { padding: 11px 14px; font-size: 14px; color: white; border: none; border-radius: 9px; width: 100%; cursor: pointer; font-weight: 600; transition: opacity 0.2s, transform 0.1s; }
-        .toolbar-btn:active { transform: scale(0.98); }
-        .toolbar-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-        .show-all-btn { background: #28a745; }
-        .hide-all-btn { background: #fd7e14; }
+        /* Top App Bar */
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 90;
+            background: var(--tab-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 16px;
+        }
+        .app-header-inner {
+            max-width: 760px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .app-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 17px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .live-pill {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+        .live-pill.is-on { color: #2b8a3e; border-color: rgba(43, 138, 62, 0.35); background: rgba(43, 138, 62, 0.1); }
+        .live-pill.is-off { color: #e03131; border-color: rgba(224, 49, 49, 0.35); background: rgba(224, 49, 49, 0.1); }
+        .icon-toggle-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface-alt);
+            color: var(--text);
+            font-size: 16px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-        /* Remote Control Grid */
-        .remote-now-playing { background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: #444; text-align: left; word-break: break-all; }
-        .remote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 9px; }
-        .remote-btn { padding: 12px 10px; border: none; border-radius: 10px; color: white; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-        .remote-btn:hover { opacity: 0.9; }
-        .remote-btn.primary { background: #007bff; }
+        /* Main Page Container */
+        .page-wrap {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 14px 14px 10px;
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 14px;
+            box-shadow: var(--shadow);
+        }
+        .card h3 {
+            margin: 0 0 12px 0;
+            font-size: 15.5px;
+            font-weight: 700;
+        }
+        .card-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .card-header-row h3 { margin: 0; }
+        .card-sub {
+            margin: 0 0 12px 0;
+            font-size: 13px;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+
+        /* Now Playing (1-up & 2-up Collage) */
+        .np-empty {
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 13.5px;
+            color: var(--muted);
+            margin-bottom: 14px;
+        }
+        .np-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .np-grid.is-collage {
+            grid-template-columns: 1fr 1fr;
+        }
+        .np-item {
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .np-grid:not(.is-collage) .np-item {
+            flex-direction: row;
+            align-items: center;
+            padding: 10px;
+            gap: 12px;
+        }
+        .np-thumb-wrap {
+            position: relative;
+            background: #111;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .np-grid:not(.is-collage) .np-thumb-wrap {
+            width: 84px;
+            height: 84px;
+            border-radius: 10px;
+        }
+        .np-grid.is-collage .np-thumb-wrap {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+        }
+        .np-thumb {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .np-role-tag {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: rgba(0, 0, 0, 0.68);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 999px;
+        }
+        .np-body {
+            padding: 10px;
+            min-width: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .np-grid:not(.is-collage) .np-body { padding: 0; }
+        .np-path {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .np-meta {
+            font-size: 11.5px;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .np-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .np-btn {
+            padding: 6px 9px;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            text-decoration: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .np-btn.is-fav {
+            background: #f59f00;
+            color: #111;
+            border-color: #f59f00;
+        }
+        .np-btn.danger-soft {
+            color: var(--danger);
+        }
+
+        /* Remote Grid */
+        .remote-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 9px;
+        }
+        @media (min-width: 520px) {
+            .remote-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        .remote-btn {
+            padding: 13px 10px;
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 13.5px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.15s;
+        }
+        .remote-btn:active { transform: scale(0.97); }
+        .remote-btn.primary { background: #4c6ef5; }
         .remote-btn.secondary { background: #5c7cfa; }
-        .remote-btn.gold { background: #f59f00; color: #111; }
-        .remote-btn.warning { background: #fd7e14; }
-        .remote-btn.danger { background: #dc3545; }
-        .remote-btn.success { background: #28a745; }
-        .remote-btn.dark { background: #343a40; }
+        .remote-btn.warning { background: #f08c00; }
         .remote-btn.purple { background: #7048e8; }
         .remote-btn.purple.active { background: #2b8a3e; }
+        .remote-btn.success { background: #2b8a3e; }
+        .remote-btn.dark { background: #343a40; }
 
-        /* Playback Filter Box */
-        .filter-box { margin-top: 12px; padding: 12px 14px; background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; }
-        .filter-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .filter-pill { padding: 7px 11px; border: 1px solid #d0d7e2; background: #fff; color: #333; border-radius: 999px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-        .filter-pill.active { background: #007bff; color: #fff; border-color: #007bff; }
-        .filter-folder-select { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 7px; font-size: 13px; display: none; }
+        /* Filter / Speed / Brightness Boxes */
+        .sub-box {
+            margin-top: 12px;
+            padding: 12px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .sub-box-title {
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .pill {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            border-radius: 999px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .pill.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+        .select-input, .text-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 14px;
+        }
+        .brightness-slider {
+            width: 100%;
+            accent-color: #f59f00;
+            height: 28px;
+            cursor: pointer;
+        }
+        .preset-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .preset-btn {
+            padding: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            border-radius: 9px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
 
-        /* Brightness Box */
-        .brightness-box { margin-top: 14px; padding: 12px 14px; background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; }
-        .brightness-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-        .brightness-slider { width: 100%; accent-color: #f59f00; cursor: pointer; }
-        .brightness-presets { display: flex; gap: 8px; margin-top: 8px; }
-        .preset-btn { flex: 1; padding: 7px 8px; border: 1px solid #d8dee9; background: #fff; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; color: #333; }
-        .preset-btn:hover { background: #eef2f8; }
-        #remote-feedback { margin-top: 10px; font-size: 13px; color: #555; min-height: 18px; text-align: left; }
+        /* Upload Area */
+        .drop-zone {
+            border: 2px dashed var(--primary);
+            border-radius: 14px;
+            padding: 24px 16px;
+            text-align: center;
+            background: var(--surface-alt);
+            cursor: pointer;
+            margin-bottom: 12px;
+            transition: background 0.2s;
+        }
+        .drop-zone:active { opacity: 0.85; }
+        .drop-zone-icon { font-size: 32px; margin-bottom: 6px; }
+        .drop-zone-title { font-size: 15px; font-weight: 700; }
+        .drop-zone-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
-        /* Health Dashboard */
-        .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 10px; text-align: left; }
-        .health-card { background: #f8f9fc; border: 1px solid #e6eaf2; border-radius: 10px; padding: 10px 12px; }
-        .health-label { font-size: 11px; color: #777; margin-bottom: 4px; }
-        .health-value { font-size: 15px; font-weight: 700; color: #222; }
-        .badge-on { color: #28a745; }
-        .badge-off { color: #dc3545; }
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .preview-tile {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #111;
+            border: 1px solid var(--border);
+        }
+        .preview-tile img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .preview-video-badge {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 11px;
+            padding: 4px;
+            text-align: center;
+            word-break: break-all;
+        }
+        .preview-remove {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            border: none;
+            background: rgba(0, 0, 0, 0.72);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .upload-progress-wrap {
+            display: none;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .progress-track {
+            width: 100%;
+            height: 10px;
+            background: var(--border);
+            border-radius: 999px;
+            overflow: hidden;
+            margin: 8px 0 6px;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4c6ef5, #22b8cf);
+            transition: width 0.15s ease;
+        }
+        .upload-submit-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 16px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .upload-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .upload-result-box {
+            display: none;
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(43, 138, 62, 0.12);
+            border: 1px solid rgba(43, 138, 62, 0.35);
+            font-size: 13.5px;
+            line-height: 1.5;
+        }
+
+        /* Virtual Albums & Global Search */
+        .virtual-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 9px;
+            margin-bottom: 12px;
+        }
+        .virtual-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding: 14px 8px;
+            border-radius: 14px;
+            text-decoration: none;
+            color: var(--text);
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            font-size: 12.5px;
+            font-weight: 700;
+            text-align: center;
+        }
+        .virtual-card .v-icon { font-size: 22px; }
+        .virtual-card .v-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+        .search-row {
+            display: flex;
+            gap: 8px;
+        }
+        .search-btn {
+            padding: 0 16px;
+            border: none;
+            border-radius: 10px;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
 
         /* Folder List */
-        .folder-list { list-style: none; padding: 0; text-align: left; border: 1px solid #e2e6ee; border-radius: 10px; overflow: hidden; margin-top: 16px; }
-        .folder-item { border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.2s ease; padding-right: 14px; }
-        .folder-item:last-child { border-bottom: none; }
-        .folder-item:hover { background-color: #f0f7ff; }
-        .folder-item.is-hidden .folder-name { color: #999; text-decoration: line-through; font-weight: normal; }
-        .folder-item.is-hidden .folder-icon { opacity: 0.5; }
-        .folder-info { display: flex; align-items: center; gap: 8px; padding: 12px 0 12px 14px; }
-        .folder-name { font-size: 15px; font-weight: 500; color: #333; }
-        .folder-link { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; }
-        .toggle-icon { cursor: pointer; display: inline-flex; justify-content: center; align-items: center; width: 20px; height: 20px; font-size: 12px; color: #777; user-select: none; border-radius: 4px; }
-        .folder-actions { display: flex; gap: 8px; }
-        .action-btn { padding: 6px 12px; font-size: 13px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; }
-        .toggle-btn.show-btn { background: #28a745; }
-        .toggle-btn.hide-btn { background: #fd7e14; }
+        .mini-btn {
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+        }
+        .mini-btn.success { background: var(--success); }
+        .mini-btn.warning { background: var(--warning); }
+        .mini-btn.neutral { background: var(--surface-alt); color: var(--text); border: 1px solid var(--border); }
 
-        #file-list-container { max-height: 150px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 16px; text-align: left; background-color: #f9f9f9; }
-        .file-item { padding: 6px 8px; font-size: 13px; color: #333; border-bottom: 1px solid #eee; }
-        .file-item:last-child { border-bottom: none; }
+        .folder-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .folder-item {
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-right: 12px;
+            background: var(--surface);
+        }
+        .folder-item:last-child { border-bottom: none; }
+        .folder-item.is-hidden .folder-name { color: var(--muted); text-decoration: line-through; }
+        .folder-item.is-hidden .folder-icon { opacity: 0.45; }
+        .folder-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 0 12px 12px;
+            min-width: 0;
+            flex: 1;
+        }
+        .folder-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: inherit;
+            min-width: 0;
+            flex: 1;
+        }
+        .folder-name {
+            font-size: 14.5px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .toggle-icon {
+            cursor: pointer;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 22px;
+            height: 22px;
+            font-size: 11px;
+            color: var(--muted);
+            user-select: none;
+            flex-shrink: 0;
+        }
+        .action-btn {
+            padding: 7px 12px;
+            font-size: 12.5px;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+        .toggle-btn.show-btn { background: var(--success); }
+        .toggle-btn.hide-btn { background: var(--warning); }
+
+        /* Health Grid */
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        @media (min-width: 520px) {
+            .health-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        .health-card {
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+        }
+        .health-label { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+        .health-value { font-size: 15px; font-weight: 800; }
+        .badge-on { color: #2b8a3e; }
+        .badge-off { color: #e03131; }
+        .sys-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+        .toolbar-btn {
+            padding: 11px 16px;
+            font-size: 13.5px;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        /* Fixed Bottom Tab Bar */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: var(--tab-bg);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-top: 1px solid var(--border);
+            padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+        }
+        .bottom-nav-inner {
+            max-width: 760px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+        }
+        .nav-tab {
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            padding: 6px 4px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            font-size: 11.5px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .nav-tab .nav-ico { font-size: 20px; line-height: 1.1; }
+        .nav-tab.active {
+            color: var(--primary);
+            background: rgba(76, 110, 245, 0.1);
+        }
+
+        /* Toast */
+        #app-toast {
+            position: fixed;
+            bottom: calc(82px + env(safe-area-inset-bottom));
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(17, 24, 39, 0.92);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 999px;
+            font-size: 13.5px;
+            font-weight: 600;
+            max-width: 90vw;
+            text-align: center;
+            display: none;
+            z-index: 200;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
     </style>
 </head>
 <body>
-    <!-- 액자 리모컨 -->
-    <div class="container" style="text-align: left;">
-        <h3>🎛️ 액자 리모컨</h3>
-        <div class="remote-now-playing" id="now-playing">상태 불러오는 중...</div>
-        <div class="remote-grid">
-            <button type="button" class="remote-btn secondary" onclick="sendRemote('prev')">⏮️ 이전 사진</button>
-            <button type="button" class="remote-btn primary" onclick="sendRemote('next')">⏭️ 다음 사진</button>
-            <button type="button" class="remote-btn warning" id="pause-btn" onclick="sendRemote('toggle-pause')">⏯️ 일시정지</button>
-            <button type="button" class="remote-btn gold" id="fav-btn" onclick="sendRemote('toggle-favorite')">⭐ 즐겨찾기</button>
-            <button type="button" class="remote-btn purple" id="gallery-btn" onclick="toggleGalleryMode()">🖼️ 갤러리 모드</button>
-            <button type="button" class="remote-btn danger" onclick="hideCurrentPhoto()">🙈 현재 숨기기</button>
-            <button type="button" class="remote-btn success" onclick="sendRemote('screen-on')">📺 화면 켜기</button>
-            <button type="button" class="remote-btn dark" onclick="sendRemote('screen-off')">🌙 화면 끄기</button>
-        </div>
-
-        <!-- 재생 필터 모드 -->
-        <div class="filter-box">
-            <div style="font-size: 13px; font-weight: 600; color: #333;">🎯 재생 필터 (오늘·이맘때 추억 자동 가중치 적용)</div>
-            <div class="filter-pills" id="filter-pills">
-                <button type="button" class="filter-pill" data-mode="all" onclick="setFilterMode('all')">전체</button>
-                <button type="button" class="filter-pill" data-mode="favorites" onclick="setFilterMode('favorites')">⭐ 즐겨찾기만</button>
-                <button type="button" class="filter-pill" data-mode="faces" onclick="setFilterMode('faces')">👤 인물만</button>
-                <button type="button" class="filter-pill" data-mode="videos" onclick="setFilterMode('videos')">🎬 동영상만</button>
-                <button type="button" class="filter-pill" data-mode="folder" onclick="setFilterMode('folder')">📁 폴더 선택</button>
-            </div>
-            <select id="filter-folder-select" class="filter-folder-select" onchange="setFilterFolder(this.value)"></select>
-        </div>
-
-        <!-- 슬라이드 전환 속도 -->
-        <div class="filter-box">
-            <div style="font-size: 13px; font-weight: 600; color: #333;">⏱️ 사진 전환 속도</div>
-            <div class="filter-pills" id="speed-pills">
-                <button type="button" class="filter-pill" data-ms="5000" onclick="setSlideSpeed(5000)">⚡ 빠르게 (5초)</button>
-                <button type="button" class="filter-pill" data-ms="9000" onclick="setSlideSpeed(9000)">⏱️ 보통 (9초)</button>
-                <button type="button" class="filter-pill" data-ms="20000" onclick="setSlideSpeed(20000)">☕ 여유롭게 (20초)</button>
-                <button type="button" class="filter-pill" data-ms="30000" onclick="setSlideSpeed(30000)">🖼️ 천천히 (30초)</button>
+    <header class="app-header">
+        <div class="app-header-inner">
+            <div class="app-title">🖼️ 가족 액자</div>
+            <div class="header-right">
+                <span id="header-status-pill" class="live-pill">연결 중...</span>
+                <button type="button" id="theme-toggle-btn" class="icon-toggle-btn" onclick="toggleTheme()" title="다크모드 전환">🌙</button>
             </div>
         </div>
+    </header>
 
-        <!-- 화면 밝기 제어 -->
-        <div class="brightness-box">
-            <div class="brightness-header">
-                <span>☀️ 화면 밝기 디밍 (자동: 07:30 100% / 21:00 40%)</span>
-                <span id="brightness-val">-</span>
+    <main class="page-wrap">
+        <!-- TAB 1: 리모컨 -->
+        <section id="tab-remote" class="tab-panel active">
+            <div class="card">
+                <div class="card-header-row">
+                    <h3>📺 지금 재생 중</h3>
+                    <button type="button" class="mini-btn neutral" onclick="loadSystemStatus()">새로고침</button>
+                </div>
+                <div id="now-playing-area">
+                    <div class="np-empty">상태 불러오는 중...</div>
+                </div>
+
+                <div class="remote-grid">
+                    <button type="button" class="remote-btn secondary" onclick="sendRemote('prev')">⏮️ 이전 사진</button>
+                    <button type="button" class="remote-btn primary" onclick="sendRemote('next')">⏭️ 다음 사진</button>
+                    <button type="button" class="remote-btn warning" id="pause-btn" onclick="sendRemote('toggle-pause')">⏯️ 일시정지</button>
+                    <button type="button" class="remote-btn purple" id="gallery-btn" onclick="toggleGalleryMode()">🖼️ 갤러리 모드</button>
+                    <button type="button" class="remote-btn success" onclick="sendRemote('screen-on')">📺 화면 켜기</button>
+                    <button type="button" class="remote-btn dark" onclick="sendRemote('screen-off')">🌙 화면 끄기</button>
+                </div>
+
+                <!-- 재생 필터 -->
+                <div class="sub-box">
+                    <div class="sub-box-title"><span>🎯 재생 필터 (오늘·이맘때 추억 3배 가중치)</span></div>
+                    <div class="pills" id="filter-pills">
+                        <button type="button" class="pill" data-mode="all" onclick="setFilterMode('all')">전체</button>
+                        <button type="button" class="pill" data-mode="favorites" onclick="setFilterMode('favorites')">⭐ 즐겨찾기만</button>
+                        <button type="button" class="pill" data-mode="faces" onclick="setFilterMode('faces')">👤 인물만</button>
+                        <button type="button" class="pill" data-mode="videos" onclick="setFilterMode('videos')">🎬 동영상만</button>
+                        <button type="button" class="pill" data-mode="folder" onclick="setFilterMode('folder')">📁 폴더 선택</button>
+                    </div>
+                    <select id="filter-folder-select" class="select-input" style="margin-top:8px;display:none;" onchange="setFilterFolder(this.value)"></select>
+                </div>
+
+                <!-- 전환 속도 -->
+                <div class="sub-box">
+                    <div class="sub-box-title"><span>⏱️ 사진 전환 속도</span></div>
+                    <div class="pills" id="speed-pills">
+                        <button type="button" class="pill" data-ms="5000" onclick="setSlideSpeed(5000)">⚡ 5초</button>
+                        <button type="button" class="pill" data-ms="9000" onclick="setSlideSpeed(9000)">⏱️ 보통 9초</button>
+                        <button type="button" class="pill" data-ms="20000" onclick="setSlideSpeed(20000)">☕ 20초</button>
+                        <button type="button" class="pill" data-ms="30000" onclick="setSlideSpeed(30000)">🖼️ 30초</button>
+                    </div>
+                </div>
+
+                <!-- 밝기 제어 -->
+                <div class="sub-box">
+                    <div class="sub-box-title">
+                        <span>☀️ 화면 밝기 (자동: 07:30 100% / 21:00 40%)</span>
+                        <span id="brightness-val">-</span>
+                    </div>
+                    <input type="range" id="brightness-slider" class="brightness-slider" min="15" max="100" step="5" value="50">
+                    <div class="preset-row">
+                        <button type="button" class="preset-btn" onclick="applyBrightness(40)">🌙 밤 40%</button>
+                        <button type="button" class="preset-btn" onclick="applyBrightness(60)">🌤️ 보통 60%</button>
+                        <button type="button" class="preset-btn" onclick="applyBrightness(100)">☀️ 낮 100%</button>
+                    </div>
+                </div>
             </div>
-            <input type="range" id="brightness-slider" class="brightness-slider" min="15" max="100" step="5" value="50">
-            <div class="brightness-presets">
-                <button type="button" class="preset-btn" onclick="applyBrightness(40)">🌙 밤 40%</button>
-                <button type="button" class="preset-btn" onclick="applyBrightness(60)">🌤️ 보통 60%</button>
-                <button type="button" class="preset-btn" onclick="applyBrightness(100)">☀️ 낮 100%</button>
-            </div>
-        </div>
+        </section>
 
-        <div id="remote-feedback"></div>
-    </div>
+        <!-- TAB 2: 사진 업로드 -->
+        <section id="tab-upload" class="tab-panel">
+            <div class="card">
+                <h3>📸 사진 · 동영상 올리기</h3>
+                <p class="card-sub">여러 장 선택 가능 · 아이폰 HEIC 자동 JPG 변환 · 동영상 백그라운드 최적화</p>
 
-    <!-- 사진 업로드 -->
-    <div class="container">
-        <h2>📸 매직미러 사진 올리기</h2>
-        <form action="/upload" method="post" enctype="multipart/form-data">
-            <p style="color: #666; font-size: 14px; margin-top: 0;">한 번에 여러 장 선택 가능 · 아이폰 HEIC 자동 JPG 변환 · 동영상 백그라운드 변환</p>
-            <div style="margin: 16px 0; padding: 14px; background: #f8f9fc; border-radius: 10px; border: 1px solid #e6eaf2; text-align: left;">
-                <label for="folderSelect" style="display: block; margin-bottom: 10px; font-weight: 600; color: #333;">📁 저장할 폴더 선택</label>
-                <div style="margin-bottom: 10px;">
-                    <select name="folderName" id="folderSelect" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;">
+                <div class="sub-box" style="margin-top:0;margin-bottom:12px;">
+                    <label for="folderSelect" class="sub-box-title" style="margin-bottom:6px;">📁 저장할 폴더</label>
+                    <select id="folderSelect" class="select-input">
                         {{folderOptions}}
                     </select>
+                    <div id="customFolderContainer" style="display:none;margin-top:8px;">
+                        <input type="text" id="customFolder" class="text-input" placeholder="새 폴더명 입력 (예: 2026_제주여행)">
+                    </div>
                 </div>
-                <div id="customFolderContainer" style="display: none;">
-                    <input type="text" name="customFolder" id="customFolder" placeholder="새 폴더명 입력 (예: 2026_제주여행)" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px;">
+
+                <input type="file" id="photo-input" accept="image/*,video/*,.heic,.heif" multiple style="display:none;">
+                <div class="drop-zone" onclick="document.getElementById('photo-input').click()">
+                    <div class="drop-zone-icon">➕</div>
+                    <div class="drop-zone-title">사진 · 동영상 선택하기</div>
+                    <div class="drop-zone-sub" id="selected-summary">터치해서 최대 50개까지 선택 (JPG, PNG, HEIC, MP4, MOV)</div>
                 </div>
+
+                <div id="preview-grid" class="preview-grid" style="display:none;"></div>
+
+                <div id="upload-progress-wrap" class="upload-progress-wrap">
+                    <div class="sub-box-title" style="margin:0;">
+                        <span id="upload-progress-label">업로드 중...</span>
+                        <span id="upload-progress-pct">0%</span>
+                    </div>
+                    <div class="progress-track"><div id="upload-progress-fill" class="progress-fill"></div></div>
+                    <div id="upload-progress-bytes" style="font-size:12px;color:var(--muted);"></div>
+                </div>
+
+                <button type="button" id="upload-submit-btn" class="upload-submit-btn" onclick="startAjaxUpload()" disabled>전송하기 🚀</button>
+                <div id="upload-result-box" class="upload-result-box"></div>
+            </div>
+        </section>
+
+        <!-- TAB 3: 앨범 & 폴더 관리 -->
+        <section id="tab-folders" class="tab-panel">
+            <div class="card">
+                <h3>✨ 전체 모아보기 & 검색</h3>
+                <div class="virtual-grid">
+                    <a href="/manage/photos?virtual=favorites" class="virtual-card">
+                        <span class="v-icon">⭐</span>
+                        <span>전체 즐겨찾기</span>
+                        <span class="v-sub" id="v-fav-count">-</span>
+                    </a>
+                    <a href="/manage/photos?virtual=recent" class="virtual-card">
+                        <span class="v-icon">🆕</span>
+                        <span>최근 촬영순</span>
+                        <span class="v-sub">전체 앨범</span>
+                    </a>
+                    <a href="/manage/photos?virtual=videos" class="virtual-card">
+                        <span class="v-icon">🎬</span>
+                        <span>전체 동영상</span>
+                        <span class="v-sub">MP4 · MOV</span>
+                    </a>
+                </div>
+                <form action="/manage/photos" method="get" class="search-row">
+                    <input type="hidden" name="virtual" value="all">
+                    <input type="search" name="q" class="text-input" placeholder="파일명·날짜(예: 2024-05)·폴더 검색" required>
+                    <button type="submit" class="search-btn">🔍 검색</button>
+                </form>
             </div>
 
-            <input type="file" name="photos" id="photo-input" accept="image/*,video/*,.heic,.heif" multiple required>
-            <div id="file-list-container"></div>
-            <p style="color: #666; font-size: 12px; margin-top: 6px;">지원: jpg, png, gif, webp, heic(자동변환), mp4, webm, ogg, mov</p>
-            <button type="submit" class="upload-btn">전송하기 🚀</button>
-        </form>
-    </div>
+            {{folderListHtml}}
+        </section>
 
-    <!-- 시스템 상태 대시보드 -->
-    <div class="container" style="text-align: left;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h3 style="margin: 0;">📊 시스템 상태</h3>
-            <button type="button" onclick="loadSystemStatus()" style="padding: 5px 10px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer;">새로고침</button>
-        </div>
-        <div class="health-grid">
-            <div class="health-card"><div class="health-label">MagicMirror / 화면</div><div class="health-value" id="st-mm">-</div></div>
-            <div class="health-card"><div class="health-label">CPU 온도</div><div class="health-value" id="st-temp">-</div></div>
-            <div class="health-card"><div class="health-label">메모리</div><div class="health-value" id="st-mem">-</div></div>
-            <div class="health-card"><div class="health-label">디스크 여유</div><div class="health-value" id="st-disk">-</div></div>
-            <div class="health-card"><div class="health-label">캐시 / 즐겨찾기</div><div class="health-value" id="st-cache">-</div></div>
-            <div class="health-card"><div class="health-label">동영상 변환 큐</div><div class="health-value" id="st-video">-</div></div>
-        </div>
+        <!-- TAB 4: 시스템 상태 -->
+        <section id="tab-status" class="tab-panel">
+            <div class="card">
+                <div class="card-header-row">
+                    <h3>📊 시스템 상태</h3>
+                    <button type="button" class="mini-btn neutral" onclick="loadSystemStatus()">새로고침</button>
+                </div>
+                <div class="health-grid">
+                    <div class="health-card"><div class="health-label">MagicMirror / 화면</div><div class="health-value" id="st-mm">-</div></div>
+                    <div class="health-card"><div class="health-label">CPU 온도</div><div class="health-value" id="st-temp">-</div></div>
+                    <div class="health-card"><div class="health-label">메모리</div><div class="health-value" id="st-mem">-</div></div>
+                    <div class="health-card"><div class="health-label">디스크 여유</div><div class="health-value" id="st-disk">-</div></div>
+                    <div class="health-card"><div class="health-label">얼굴 / 즐겨찾기</div><div class="health-value" id="st-cache">-</div></div>
+                    <div class="health-card"><div class="health-label">썸네일 / 동영상 큐</div><div class="health-value" id="st-video">-</div></div>
+                </div>
 
-        <div id="restart-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #eee;">
-            <button type="button" id="restart-mm-btn" class="toolbar-btn" style="background-color: #6c757d; width: auto; padding: 10px 18px;">🔄 MagicMirror 재시작</button>
-            <form action="/manage/convert-all-videos" method="post" onsubmit="return confirm('모든 동영상을 검사하고 필요한 경우 백그라운드에서 변환합니다. 계속하시겠습니까?');" style="margin: 0;">
-                <button type="submit" class="toolbar-btn" style="background-color: #fd7e14; width: auto; padding: 10px 18px;">📹 전체 동영상 최적화</button>
-            </form>
-        </div>
-        <p id="restart-status" style="display: none; color: #333; margin-top: 10px; font-weight: 500; font-size: 13px;"></p>
-    </div>
+                <div class="sys-actions">
+                    <button type="button" id="restart-mm-btn" class="toolbar-btn" style="background:#495057;">🔄 MagicMirror 재시작</button>
+                    <form action="/manage/convert-all-videos" method="post" onsubmit="return confirm('모든 동영상을 검사하고 필요한 경우 백그라운드에서 변환합니다. 계속하시겠습니까?');" style="margin:0;">
+                        <button type="submit" class="toolbar-btn" style="background:#f08c00;">📹 전체 동영상 최적화</button>
+                    </form>
+                </div>
+                <p id="restart-status" style="display:none;margin:10px 0 0;font-size:13px;font-weight:600;"></p>
+            </div>
+        </section>
+    </main>
 
-    {{folderListHtml}}
+    <div id="app-toast"></div>
+
+    <nav class="bottom-nav" aria-label="메인 탭">
+        <div class="bottom-nav-inner">
+            <button type="button" class="nav-tab active" data-tab="remote" onclick="switchTab('remote')"><span class="nav-ico">🎛️</span><span>리모컨</span></button>
+            <button type="button" class="nav-tab" data-tab="upload" onclick="switchTab('upload')"><span class="nav-ico">📸</span><span>업로드</span></button>
+            <button type="button" class="nav-tab" data-tab="folders" onclick="switchTab('folders')"><span class="nav-ico">📁</span><span>앨범</span></button>
+            <button type="button" class="nav-tab" data-tab="status" onclick="switchTab('status')"><span class="nav-ico">📊</span><span>상태</span></button>
+        </div>
+    </nav>
 
     <script>
         let currentDisplayState = { galleryMode: false, filterMode: 'all', filterFolder: '', updateIntervalMs: 9000 };
         let knownVisibleFolders = [];
+        let selectedUploadFiles = [];
+        let toastTimer = null;
 
+        function showToast(msg) {
+            const el = document.getElementById('app-toast');
+            if (!el) return;
+            el.textContent = msg;
+            el.style.display = 'block';
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2800);
+        }
+
+        function escapeHtml(s) {
+            return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function encodeRelPath(rel) {
+            return String(rel || '').split('/').map(encodeURIComponent).join('/');
+        }
+
+        // --- Theme ---
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const btn = document.getElementById('theme-toggle-btn');
+            if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', theme === 'dark' ? '#182030' : '#4c6ef5');
+        }
+        function toggleTheme() {
+            const cur = document.documentElement.getAttribute('data-theme') || 'light';
+            const next = cur === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('mmip_theme', next);
+            applyTheme(next);
+        }
+        (function initTheme() {
+            const saved = localStorage.getItem('mmip_theme');
+            if (saved === 'dark' || saved === 'light') {
+                applyTheme(saved);
+            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                applyTheme('dark');
+            }
+        })();
+
+        // --- Bottom Tabs ---
+        function switchTab(tabName) {
+            const valid = ['remote', 'upload', 'folders', 'status'];
+            const target = valid.includes(tabName) ? tabName : 'remote';
+            document.querySelectorAll('.tab-panel').forEach((p) => {
+                p.classList.toggle('active', p.id === `tab-${target}`);
+            });
+            document.querySelectorAll('.nav-tab').forEach((b) => {
+                b.classList.toggle('active', b.dataset.tab === target);
+            });
+            sessionStorage.setItem('mmip_tab', target);
+            if (window.location.hash !== `#${target}`) {
+                history.replaceState(null, '', `#${target}`);
+            }
+            window.scrollTo({ top: 0, behavior: 'instant' });
+        }
+
+        // --- Now Playing 1-up / 2-up Collage Renderer ---
+        function renderNowPlaying(mm, mmRunning) {
+            const area = document.getElementById('now-playing-area');
+            if (!area) return;
+            if (!mm) {
+                area.innerHTML = `<div class="np-empty">${mmRunning ? '🖼️ MagicMirror 기동 중...' : '🌙 현재 액자 화면이 꺼져 있습니다.'}</div>`;
+                return;
+            }
+            const cur = mm.currentPhoto;
+            if (!cur || !cur.path) {
+                area.innerHTML = '<div class="np-empty">🖼️ 현재 표시 중인 사진 정보를 기다리는 중...</div>';
+                return;
+            }
+
+            const items = [
+                {
+                    role: cur.companionPath ? '위 사진' : (mm.paused ? '⏸️ 일시정지' : '재생 중'),
+                    path: cur.path,
+                    isFav: Boolean(cur.isFavorite),
+                    isPrimary: true,
+                    meta: cur.effect || ''
+                }
+            ];
+            if (cur.companionPath) {
+                items.push({
+                    role: '아래 사진',
+                    path: cur.companionPath,
+                    isFav: Boolean(cur.companionIsFavorite),
+                    isPrimary: false,
+                    meta: '콜라주 짝 사진'
+                });
+            }
+
+            const isCollage = items.length > 1;
+            const cardsHtml = items.map((it) => {
+                const enc = encodeRelPath(it.path);
+                const fileName = it.path.split('/').pop();
+                const folderName = it.path.includes('/') ? it.path.substring(0, it.path.lastIndexOf('/')) : '';
+                const isVideo = /\.(mp4|mov|webm|ogg)$/i.test(fileName);
+                const thumbHtml = isVideo
+                    ? `<video src="/uploads/${enc}#t=0.5" muted playsinline preload="metadata" class="np-thumb"></video>`
+                    : `<img src="/thumb/${enc}" alt="${escapeHtml(fileName)}" class="np-thumb">`;
+                const safePathJs = it.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const favClick = it.isPrimary
+                    ? `sendRemote('toggle-favorite')`
+                    : `sendRemoteWithPath('toggle-favorite', '${safePathJs}')`;
+                const hideClick = it.isPrimary
+                    ? `hideCurrentPhoto()`
+                    : `hideSpecificPhoto('${safePathJs}')`;
+
+                return `
+                    <div class="np-item">
+                        <div class="np-thumb-wrap">
+                            ${thumbHtml}
+                            <span class="np-role-tag">${escapeHtml(it.role)}</span>
+                        </div>
+                        <div class="np-body">
+                            <div class="np-path" title="${escapeHtml(it.path)}">${escapeHtml(fileName)}</div>
+                            <div class="np-meta">${escapeHtml(folderName || it.meta)}</div>
+                            <div class="np-actions">
+                                <a class="np-btn" href="/download/${enc}" download>⬇️ 저장</a>
+                                <button type="button" class="np-btn ${it.isFav ? 'is-fav' : ''}" onclick="${favClick}">${it.isFav ? '★' : '☆'}</button>
+                                <button type="button" class="np-btn danger-soft" onclick="${hideClick}">🙈</button>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            area.innerHTML = `<div class="np-grid ${isCollage ? 'is-collage' : ''}">${cardsHtml}</div>`;
+        }
+
+        // --- Display State / Remote ---
         function renderDisplayStateUi() {
             const gBtn = document.getElementById('gallery-btn');
             if (gBtn) {
                 gBtn.classList.toggle('active', Boolean(currentDisplayState.galleryMode));
                 gBtn.textContent = currentDisplayState.galleryMode ? '🖼️ 위젯 보이기' : '🖼️ 갤러리 모드';
             }
-            document.querySelectorAll('#filter-pills .filter-pill').forEach((btn) => {
+            document.querySelectorAll('#filter-pills .pill').forEach((btn) => {
                 btn.classList.toggle('active', btn.dataset.mode === currentDisplayState.filterMode);
             });
-            document.querySelectorAll('#speed-pills .filter-pill').forEach((btn) => {
+            document.querySelectorAll('#speed-pills .pill').forEach((btn) => {
                 btn.classList.toggle('active', Number(btn.dataset.ms) === Number(currentDisplayState.updateIntervalMs || 9000));
             });
             const sel = document.getElementById('filter-folder-select');
@@ -208,15 +1018,14 @@
                 if (knownVisibleFolders.length > 0) {
                     const prevVal = currentDisplayState.filterFolder || sel.value;
                     sel.innerHTML = knownVisibleFolders
-                        .map((f) => `<option value="${f}" ${f === prevVal ? 'selected' : ''}>📁 ${f}</option>`)
+                        .map((f) => `<option value="${escapeHtml(f)}" ${f === prevVal ? 'selected' : ''}>📁 ${escapeHtml(f)}</option>`)
                         .join('');
                 }
             }
         }
 
         async function updateDisplayState(patch, successMsg) {
-            const fb = document.getElementById('remote-feedback');
-            fb.textContent = '⏳ 적용 중...';
+            showToast('⏳ 적용 중...');
             try {
                 const res = await fetch('/manage/api/display-state', {
                     method: 'POST',
@@ -232,39 +1041,38 @@
                     updateIntervalMs: Number(data.updateIntervalMs || 9000)
                 };
                 renderDisplayStateUi();
-                fb.textContent = successMsg;
+                showToast(successMsg);
                 setTimeout(loadSystemStatus, 800);
             } catch (err) {
-                fb.textContent = `❌ 적용 실패: ${err.message}`;
+                showToast(`❌ 적용 실패: ${err.message}`);
             }
         }
 
         function toggleGalleryMode() {
             const next = !currentDisplayState.galleryMode;
-            updateDisplayState({ galleryMode: next }, next ? '🖼️ 갤러리 전용 모드 ON (모든 위젯 숨김)' : '🖼️ 일반 모드로 복귀했습니다.');
+            updateDisplayState({ galleryMode: next }, next ? '🖼️ 갤러리 전용 모드 ON' : '🖼️ 일반 모드로 복귀했습니다.');
         }
 
         function setFilterMode(mode) {
             if (mode === 'folder') {
                 const folder = currentDisplayState.filterFolder || knownVisibleFolders[0] || '';
-                updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터 적용: ${folder || '(없음)'}`);
+                updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터: ${folder || '(없음)'}`);
             } else {
                 const names = { all: '전체', favorites: '⭐ 즐겨찾기만', faces: '👤 인물만', videos: '🎬 동영상만' };
-                updateDisplayState({ filterMode: mode }, `🎯 재생 필터 변경: ${names[mode] || mode}`);
+                updateDisplayState({ filterMode: mode }, `🎯 필터 변경: ${names[mode] || mode}`);
             }
         }
 
         function setFilterFolder(folder) {
-            updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터 변경: ${folder}`);
+            updateDisplayState({ filterMode: 'folder', filterFolder: folder }, `📁 폴더 필터: ${folder}`);
         }
 
         function setSlideSpeed(ms) {
-            updateDisplayState({ updateIntervalMs: ms }, `⏱️ 사진 전환 속도를 ${Math.round(ms / 1000)}초로 변경했습니다.`);
+            updateDisplayState({ updateIntervalMs: ms }, `⏱️ 전환 속도 ${Math.round(ms / 1000)}초 적용`);
         }
 
         const brightnessSlider = document.getElementById('brightness-slider');
         const brightnessVal = document.getElementById('brightness-val');
-
         if (brightnessSlider) {
             brightnessSlider.addEventListener('input', () => {
                 brightnessVal.textContent = `${brightnessSlider.value}%`;
@@ -275,10 +1083,9 @@
         }
 
         async function applyBrightness(value) {
-            const fb = document.getElementById('remote-feedback');
             brightnessSlider.value = value;
             brightnessVal.textContent = `${value}%`;
-            fb.textContent = `☀️ 밝기를 ${value}%로 조절 중...`;
+            showToast(`☀️ 밝기 ${value}% 적용 중...`);
             try {
                 const res = await fetch('/manage/api/brightness', {
                     method: 'POST',
@@ -288,9 +1095,9 @@
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || '실패');
                 brightnessVal.textContent = `${data.brightness}%`;
-                fb.textContent = `✅ 모니터 밝기를 ${data.brightness}%로 설정했습니다.`;
+                showToast(`✅ 화면 밝기 ${data.brightness}% 설정 완료`);
             } catch (err) {
-                fb.textContent = `❌ 밝기 조절 실패: ${err.message}`;
+                showToast(`❌ 밝기 조절 실패: ${err.message}`);
             }
         }
 
@@ -300,6 +1107,13 @@
                 const data = await res.json();
                 if (!data.ok) return;
 
+                const headerPill = document.getElementById('header-status-pill');
+                if (headerPill) {
+                    const isOn = data.screenStatus === 'on';
+                    headerPill.className = `live-pill ${isOn ? 'is-on' : (data.screenStatus === 'off' ? 'is-off' : '')}`;
+                    headerPill.textContent = isOn ? '● 화면 켜짐' : (data.screenStatus === 'off' ? '● 화면 꺼짐' : (data.mmRunning ? '● 실행 중' : '● 중지됨'));
+                }
+
                 const mmText = data.mmRunning ? '<span class="badge-on">실행 중</span>' : '<span class="badge-off">중지됨</span>';
                 const scrText = data.screenStatus === 'on' ? '켜짐' : (data.screenStatus === 'off' ? '꺼짐' : '확인불가');
                 document.getElementById('st-mm').innerHTML = `${mmText} · ${scrText}`;
@@ -307,9 +1121,7 @@
                 document.getElementById('st-mem').textContent = `${data.memory.percent}% (${data.memory.usedMB}MB)`;
                 document.getElementById('st-disk').textContent = data.disk ? `${data.disk.avail} (${data.disk.percent})` : '-';
 
-                if (Array.isArray(data.visibleFolders)) {
-                    knownVisibleFolders = data.visibleFolders;
-                }
+                if (Array.isArray(data.visibleFolders)) knownVisibleFolders = data.visibleFolders;
                 if (data.displayState) {
                     currentDisplayState = data.displayState;
                     renderDisplayStateUi();
@@ -318,71 +1130,64 @@
                 if (typeof data.brightness === 'number') {
                     brightnessSlider.value = data.brightness;
                     brightnessVal.textContent = `${data.brightness}%`;
-                } else {
-                    brightnessVal.textContent = data.screenStatus === 'off' ? '화면 꺼짐' : '-';
                 }
 
+                const favCount = data.mm && typeof data.mm.favoriteCount === 'number' ? data.mm.favoriteCount : (data.favoriteCount || 0);
+                const vFav = document.getElementById('v-fav-count');
+                if (vFav) vFav.textContent = `${favCount}장`;
+
                 if (data.mm) {
-                    const favCount = typeof data.mm.favoriteCount === 'number' ? data.mm.favoriteCount : (data.favoriteCount || 0);
                     document.getElementById('st-cache').textContent = `👤${data.mm.faceCacheCount} · ⭐${favCount}`;
                     const pauseBtn = document.getElementById('pause-btn');
                     if (pauseBtn) pauseBtn.textContent = data.mm.paused ? '▶️ 재생 재개' : '⏯️ 일시정지';
-
-                    const cur = data.mm.currentPhoto;
-                    const favBtn = document.getElementById('fav-btn');
-                    if (favBtn) favBtn.textContent = cur && cur.isFavorite ? '★ 즐겨찾기 해제' : '⭐ 즐겨찾기';
-
-                    const np = document.getElementById('now-playing');
-                    if (cur && cur.path) {
-                        const pairNote = cur.companionPath ? ` + ${cur.companionPath.split('/').pop()}` : '';
-                        const favMark = cur.isFavorite ? '⭐ ' : '';
-                        const pauseNote = data.mm.paused ? ' [일시정지]' : '';
-                        np.textContent = `🖼️ 현재 표시: ${favMark}${cur.path}${pairNote}${pauseNote}`;
-                    } else {
-                        np.textContent = '🖼️ 현재 표시 중인 사진 정보 대기 중...';
-                    }
                 } else {
-                    document.getElementById('st-cache').textContent = `⭐${data.favoriteCount || 0}`;
-                    document.getElementById('now-playing').textContent = data.mmRunning ? '🖼️ MagicMirror 기동 중...' : '🌙 현재 화면이 꺼져 있습니다.';
+                    document.getElementById('st-cache').textContent = `⭐${favCount}`;
                 }
 
-                const vq = data.videoQueue;
-                document.getElementById('st-video').textContent = vq.running ? `변환 중 (${vq.queuedCount + 1})` : '대기';
+                renderNowPlaying(data.mm, data.mmRunning);
+
+                const vq = data.videoQueue || {};
+                const thumbTxt = typeof data.thumbCacheCount === 'number' ? `🖼️${data.thumbCacheCount}` : '';
+                const vqTxt = vq.running ? `변환 ${vq.queuedCount + 1}` : '대기';
+                document.getElementById('st-video').textContent = `${thumbTxt} · ${vqTxt}`;
             } catch (err) {
                 console.error('Status fetch failed:', err);
             }
         }
 
         async function sendRemote(action) {
-            const fb = document.getElementById('remote-feedback');
-            fb.textContent = '⏳ 명령 전송 중...';
+            return sendRemoteWithPath(action, null);
+        }
+
+        async function sendRemoteWithPath(action, relPath) {
+            showToast('⏳ 명령 전송 중...');
             try {
+                const payload = relPath ? { action, relPath } : { action };
                 const res = await fetch('/manage/api/remote', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || '실패');
                 const labels = {
                     'prev': '⏮️ 이전 사진으로 돌아갔습니다.',
                     'next': '⏭️ 다음 사진으로 전환했습니다.',
-                    'toggle-pause': data.paused ? '⏸️ 슬라이드쇼를 일시정지했습니다.' : '▶️ 슬라이드쇼를 재개했습니다.',
-                    'toggle-favorite': data.isFavorite ? `⭐ 즐겨찾기에 추가했습니다 (${data.path})` : `☆ 즐겨찾기에서 해제했습니다 (${data.path})`,
+                    'toggle-pause': data.paused ? '⏸️ 일시정지했습니다.' : '▶️ 재생을 재개했습니다.',
+                    'toggle-favorite': data.isFavorite ? '⭐ 즐겨찾기에 추가했습니다.' : '☆ 즐겨찾기에서 해제했습니다.',
                     'screen-on': '📺 화면을 켰습니다.',
                     'screen-off': '🌙 화면을 껐습니다.'
                 };
-                fb.textContent = labels[action] || '✅ 완료했습니다.';
-                setTimeout(loadSystemStatus, 800);
+                showToast(labels[action] || '✅ 완료했습니다.');
+                setTimeout(loadSystemStatus, 700);
             } catch (err) {
-                fb.textContent = `❌ 실패: ${err.message}`;
+                showToast(`❌ 실패: ${err.message}`);
             }
         }
 
         async function hideCurrentPhoto() {
-            if (!confirm('현재 액자에 표시 중인 사진을 숨김 처리하고 다음 사진으로 넘길까요?')) return;
-            const fb = document.getElementById('remote-feedback');
-            fb.textContent = '⏳ 현재 사진 숨기는 중...';
+            if (!confirm('현재 액자에 표시 중인 사진을 숨김 처리하고 다음으로 넘길까요?')) return;
+            showToast('⏳ 현재 사진 숨기는 중...');
             try {
                 const res = await fetch('/manage/api/remote', {
                     method: 'POST',
@@ -391,95 +1196,72 @@
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) throw new Error(data.error || '실패');
-                fb.textContent = `🙈 숨김 완료: ${data.hiddenPath}`;
-                setTimeout(loadSystemStatus, 1000);
+                showToast('🙈 사진을 숨김 처리했습니다.');
+                setTimeout(loadSystemStatus, 900);
             } catch (err) {
-                fb.textContent = `❌ 숨김 실패: ${err.message}`;
+                showToast(`❌ 숨김 실패: ${err.message}`);
             }
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            loadSystemStatus();
-            setInterval(loadSystemStatus, 10000);
-
-            const urlParams = new URLSearchParams(window.location.search);
-            const status = urlParams.get('status');
-            if (status) {
-                let message = '';
-                if (status === 'conversion_started') {
-                    message = '동영상 변환 작업이 백그라운드 큐에 등록되었습니다. 시스템 상태 카드에서 진행 여부를 확인할 수 있습니다.';
-                } else if (status === 'conversion_running') {
-                    message = '이미 전체 동영상 변환 작업이 진행 중입니다.';
-                }
-                if (message) alert(message);
-                window.history.replaceState({}, document.title, window.location.pathname);
+        async function hideSpecificPhoto(relPath) {
+            if (!confirm(`이 사진(${relPath.split('/').pop()})을 숨김 처리할까요?`)) return;
+            showToast('⏳ 사진 숨기는 중...');
+            try {
+                const res = await fetch('/manage/api/remote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'hide-photo', relPath })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '실패');
+                showToast('🙈 사진을 숨김 처리했습니다.');
+                setTimeout(loadSystemStatus, 900);
+            } catch (err) {
+                showToast(`❌ 숨김 실패: ${err.message}`);
             }
-        });
+        }
 
-        const folderSelect = document.getElementById('folderSelect');
-        const customFolderInput = document.getElementById('customFolder');
-        const customFolderContainer = document.getElementById('customFolderContainer');
-        const restartBtn = document.getElementById('restart-mm-btn');
-        const restartStatus = document.getElementById('restart-status');
-        const photoInput = document.getElementById('photo-input');
-        const fileListContainer = document.getElementById('file-list-container');
+        // --- Ajax Folder Visibility Toggle ---
+        async function toggleFolderVisibilityAjax(btn) {
+            const li = btn.closest('.folder-item');
+            if (!li) return;
+            const folderPath = li.getAttribute('data-path');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/manage/api/folder/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folderName: folderPath })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || '변경 실패');
 
-        if (photoInput && fileListContainer) {
-            photoInput.addEventListener('change', function() {
-                fileListContainer.innerHTML = '';
-                if (this.files && this.files.length > 0) {
-                    fileListContainer.style.display = 'block';
-                    for (const file of this.files) {
-                        const fileItem = document.createElement('div');
-                        fileItem.className = 'file-item';
-                        fileItem.textContent = `📄 ${file.name}`;
-                        fileListContainer.appendChild(fileItem);
+                li.setAttribute('data-path', data.newFolder);
+                li.classList.toggle('is-hidden', data.isHidden);
+                const link = li.querySelector('.folder-link');
+                if (link) link.href = `/manage/photos?folderName=${encodeURIComponent(data.newFolder)}`;
+                btn.classList.toggle('show-btn', data.isHidden);
+                btn.classList.toggle('hide-btn', !data.isHidden);
+                btn.textContent = data.isHidden ? '보이기' : '숨기기';
+
+                // Update child items data-path prefix if any
+                const oldPrefix = folderPath + '/';
+                const newPrefix = data.newFolder + '/';
+                document.querySelectorAll('.folder-item').forEach((row) => {
+                    const p = row.getAttribute('data-path');
+                    if (p && p.startsWith(oldPrefix)) {
+                        const updated = newPrefix + p.substring(oldPrefix.length);
+                        row.setAttribute('data-path', updated);
+                        const a = row.querySelector('.folder-link');
+                        if (a) a.href = `/manage/photos?folderName=${encodeURIComponent(updated)}`;
                     }
-                } else {
-                    fileListContainer.style.display = 'none';
-                }
-            });
-            fileListContainer.style.display = 'none';
-        }
-
-        if (restartBtn) {
-            restartBtn.addEventListener('click', () => {
-                if (!confirm('MagicMirror를 재시작하시겠습니까?')) return;
-                restartBtn.disabled = true;
-                restartStatus.style.display = 'block';
-                restartStatus.style.color = '#333';
-                restartStatus.textContent = '🔄 재시작 명령을 보냈습니다...';
-                fetch('/manage/restart-mm', { method: 'POST' })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.success) {
-                            restartStatus.style.color = '#28a745';
-                            restartStatus.textContent = '✅ 재시작 요청 완료! 5초 후 새로고침합니다.';
-                            setTimeout(() => { window.location.href = '/'; }, 5000);
-                        } else {
-                            throw new Error(data.message || 'Restart failed');
-                        }
-                    })
-                    .catch(err => {
-                        restartStatus.style.color = '#dc3545';
-                        restartStatus.textContent = `❌ 오류: ${err.message}`;
-                        restartBtn.disabled = false;
-                    });
-            });
-        }
-
-        function toggleCustomFolderInput() {
-            if (folderSelect.value === '') {
-                customFolderContainer.style.display = 'block';
-                customFolderInput.focus();
-            } else {
-                customFolderContainer.style.display = 'none';
-                customFolderInput.value = '';
+                });
+                showToast(data.isHidden ? '🙈 폴더를 숨겼습니다.' : '👁️ 폴더를 보이게 했습니다.');
+            } catch (err) {
+                showToast(`❌ 오류: ${err.message}`);
+            } finally {
+                btn.disabled = false;
             }
-        }
-        if (folderSelect && customFolderInput && customFolderContainer) {
-            toggleCustomFolderInput();
-            folderSelect.addEventListener('change', toggleCustomFolderInput);
         }
 
         function toggleFolder(path, element) {
@@ -491,13 +1273,212 @@
         function updateVisibility() {
             const rows = document.querySelectorAll('li[data-path]');
             const collapsedPaths = Array.from(rows)
-                .filter(r => r.classList.contains('collapsed'))
-                .map(r => r.getAttribute('data-path') + '/');
-            rows.forEach(row => {
+                .filter((r) => r.classList.contains('collapsed'))
+                .map((r) => r.getAttribute('data-path') + '/');
+            rows.forEach((row) => {
                 const p = row.getAttribute('data-path');
-                row.style.display = collapsedPaths.some(cp => p.startsWith(cp)) ? 'none' : 'flex';
+                row.style.display = collapsedPaths.some((cp) => p.startsWith(cp)) ? 'none' : 'flex';
             });
         }
+
+        // --- Pre-upload Preview & XHR Progress Upload ---
+        const folderSelect = document.getElementById('folderSelect');
+        const customFolderInput = document.getElementById('customFolder');
+        const customFolderContainer = document.getElementById('customFolderContainer');
+        const photoInput = document.getElementById('photo-input');
+        const previewGrid = document.getElementById('preview-grid');
+        const uploadSubmitBtn = document.getElementById('upload-submit-btn');
+
+        function toggleCustomFolderInput() {
+            if (!folderSelect) return;
+            if (folderSelect.value === '') {
+                customFolderContainer.style.display = 'block';
+                customFolderInput.focus();
+            } else {
+                customFolderContainer.style.display = 'none';
+                customFolderInput.value = '';
+            }
+        }
+        if (folderSelect) {
+            toggleCustomFolderInput();
+            folderSelect.addEventListener('change', toggleCustomFolderInput);
+        }
+
+        function renderUploadPreviews() {
+            const summary = document.getElementById('selected-summary');
+            previewGrid.innerHTML = '';
+            if (selectedUploadFiles.length === 0) {
+                previewGrid.style.display = 'none';
+                uploadSubmitBtn.disabled = true;
+                summary.textContent = '터치해서 최대 50개까지 선택 (JPG, PNG, HEIC, MP4, MOV)';
+                return;
+            }
+            const totalMB = (selectedUploadFiles.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024)).toFixed(1);
+            summary.textContent = `선택됨: ${selectedUploadFiles.length}개 파일 (총 ${totalMB} MB)`;
+            previewGrid.style.display = 'grid';
+            uploadSubmitBtn.disabled = false;
+
+            selectedUploadFiles.forEach((file, idx) => {
+                const tile = document.createElement('div');
+                tile.className = 'preview-tile';
+                const isImg = file.type.startsWith('image/') && !/\.(heic|heif)$/i.test(file.name);
+                if (isImg) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    img.onload = () => URL.revokeObjectURL(img.src);
+                    tile.appendChild(img);
+                } else {
+                    const badge = document.createElement('div');
+                    badge.className = 'preview-video-badge';
+                    const ico = /\.(mp4|mov|webm|ogg)$/i.test(file.name) ? '🎬' : '📷';
+                    badge.innerHTML = `<div style="font-size:20px;">${ico}</div><div>${escapeHtml(file.name.slice(0, 14))}</div>`;
+                    tile.appendChild(badge);
+                }
+                const rm = document.createElement('button');
+                rm.type = 'button';
+                rm.className = 'preview-remove';
+                rm.textContent = '×';
+                rm.onclick = () => {
+                    selectedUploadFiles.splice(idx, 1);
+                    renderUploadPreviews();
+                };
+                tile.appendChild(rm);
+                previewGrid.appendChild(tile);
+            });
+        }
+
+        if (photoInput) {
+            photoInput.addEventListener('change', () => {
+                const incoming = Array.from(photoInput.files || []);
+                selectedUploadFiles = selectedUploadFiles.concat(incoming).slice(0, 50);
+                photoInput.value = '';
+                document.getElementById('upload-result-box').style.display = 'none';
+                renderUploadPreviews();
+            });
+        }
+
+        function startAjaxUpload() {
+            if (selectedUploadFiles.length === 0) return;
+            const formData = new FormData();
+            formData.append('folderName', folderSelect ? folderSelect.value : '');
+            formData.append('customFolder', customFolderInput ? customFolderInput.value.trim() : '');
+            selectedUploadFiles.forEach((f) => formData.append('photos', f));
+
+            const progWrap = document.getElementById('upload-progress-wrap');
+            const progFill = document.getElementById('upload-progress-fill');
+            const progPct = document.getElementById('upload-progress-pct');
+            const progLabel = document.getElementById('upload-progress-label');
+            const progBytes = document.getElementById('upload-progress-bytes');
+            const resBox = document.getElementById('upload-result-box');
+
+            progWrap.style.display = 'block';
+            resBox.style.display = 'none';
+            progFill.style.width = '0%';
+            progPct.textContent = '0%';
+            progLabel.textContent = `📤 업로드 중 (${selectedUploadFiles.length}개)...`;
+            uploadSubmitBtn.disabled = true;
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+                    progFill.style.width = `${pct}%`;
+                    progPct.textContent = `${pct}%`;
+                    const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+                    const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+                    progBytes.textContent = `${loadedMB} MB / ${totalMB} MB`;
+                    if (pct >= 100) {
+                        progLabel.textContent = '⚙️ 서버에서 사진 정리 · HEIC 변환 중...';
+                    }
+                }
+            };
+
+            xhr.onload = () => {
+                progWrap.style.display = 'none';
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+                        const extras = [];
+                        if (data.heicConvertedCount > 0) extras.push(`HEIC→JPG ${data.heicConvertedCount}장`);
+                        if (data.queuedVideosCount > 0) extras.push(`동영상 ${data.queuedVideosCount}개 변환 대기열 등록`);
+                        resBox.innerHTML = `
+                            <strong>✅ 업로드 완료! (${data.movedCount}개 성공${data.failedCount ? ` · ${data.failedCount}개 실패` : ''})</strong><br>
+                            📁 폴더: <strong>${escapeHtml(data.displayName)}</strong>
+                            ${extras.length ? `<br>✨ ${extras.join(' · ')}` : ''}
+                            <div style="margin-top:8px;">
+                                <a href="/manage/photos?folderName=${encodeURIComponent(data.folderName)}" style="display:inline-block;padding:7px 14px;background:#2b8a3e;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">📂 방금 올린 폴더 보기</a>
+                            </div>`;
+                        resBox.style.display = 'block';
+                        selectedUploadFiles = [];
+                        renderUploadPreviews();
+                        showToast(`✅ ${data.movedCount}개 파일 업로드 완료!`);
+                        setTimeout(loadSystemStatus, 1000);
+                        return;
+                    }
+                    throw new Error(data.error || `HTTP ${xhr.status}`);
+                } catch (err) {
+                    uploadSubmitBtn.disabled = false;
+                    showToast(`❌ 업로드 실패: ${err.message}`);
+                }
+            };
+
+            xhr.onerror = () => {
+                progWrap.style.display = 'none';
+                uploadSubmitBtn.disabled = false;
+                showToast('❌ 네트워크 오류로 업로드에 실패했습니다.');
+            };
+
+            xhr.send(formData);
+        }
+
+        // --- Restart MagicMirror ---
+        const restartBtn = document.getElementById('restart-mm-btn');
+        const restartStatus = document.getElementById('restart-status');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => {
+                if (!confirm('MagicMirror를 재시작하시겠습니까?')) return;
+                restartBtn.disabled = true;
+                restartStatus.style.display = 'block';
+                restartStatus.textContent = '🔄 재시작 명령을 보냈습니다...';
+                fetch('/manage/restart-mm', { method: 'POST' })
+                    .then((r) => r.json())
+                    .then((data) => {
+                        if (data.success) {
+                            restartStatus.textContent = '✅ 재시작 요청 완료! 잠시 후 상태가 갱신됩니다.';
+                            setTimeout(() => { restartBtn.disabled = false; loadSystemStatus(); }, 5000);
+                        } else {
+                            throw new Error(data.message || 'Restart failed');
+                        }
+                    })
+                    .catch((err) => {
+                        restartStatus.textContent = `❌ 오류: ${err.message}`;
+                        restartBtn.disabled = false;
+                    });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const hashTab = (window.location.hash || '').replace('#', '');
+            const savedTab = sessionStorage.getItem('mmip_tab');
+            switchTab(hashTab || savedTab || 'remote');
+
+            loadSystemStatus();
+            setInterval(loadSystemStatus, 10000);
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const status = urlParams.get('status');
+            if (status === 'conversion_started') {
+                showToast('🎬 전체 동영상 최적화 큐가 시작되었습니다.');
+                history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+            } else if (status === 'conversion_running') {
+                showToast('⏳ 이미 전체 동영상 변환이 진행 중입니다.');
+                history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+            }
+        });
     </script>
 </body>
 </html>

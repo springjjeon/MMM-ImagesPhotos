@@ -7,6 +7,15 @@ const { cleanFileNames, notifyMagicMirrorRefresh } = require("../lib/process-uti
 const videoQueue = require("../lib/video-queue");
 const { render } = require("../lib/view-renderer");
 
+function escapeHtml(str) {
+	return String(str || "")
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
 function createMainRouter(uploadDir, upload) {
 	const router = express.Router();
 
@@ -34,12 +43,12 @@ function createMainRouter(uploadDir, upload) {
 			let folderOptions = "";
 			const defaultFolderExists = visibleFolders.includes(defaultFolderName);
 			const defaultDisplayName = `${defaultFolderName.split("/").join(" / ")} ${!defaultFolderExists ? "(새 폴더)" : ""}`;
-			folderOptions += `<option value="${defaultFolderName}" selected>${defaultDisplayName}</option>`;
+			folderOptions += `<option value="${escapeHtml(defaultFolderName)}" selected>${escapeHtml(defaultDisplayName)}</option>`;
 
 			visibleFolders.forEach((folder) => {
 				if (folder === defaultFolderName) return;
 				const displayName = folder.split("/").join(" / ");
-				folderOptions += `<option value="${folder}">${displayName}</option>`;
+				folderOptions += `<option value="${escapeHtml(folder)}">${escapeHtml(displayName)}</option>`;
 			});
 
 			folderOptions += `<option value="">-- 새 폴더 직접 입력 --</option>`;
@@ -51,27 +60,24 @@ function createMainRouter(uploadDir, upload) {
 						const isHidden = baseName.startsWith("!");
 						const displayName = isHidden ? baseName.substring(1) : baseName;
 						const depth = folder.split(path.sep).length - 1;
-						const paddingLeft = depth * 25;
+						const paddingLeft = depth * 22;
 						const clientPath = folder.split(path.sep).join("/");
 						const hasChildren = folders.some((f) => f !== folder && f.startsWith(folder + path.sep));
-						const safeClientPath = clientPath.replace(/'/g, "\\'");
+						const safeClientPath = clientPath.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 						return `
-							<li class="folder-item ${isHidden ? "is-hidden" : ""}" data-path="${clientPath}" style="padding-left: ${paddingLeft}px;">
+							<li class="folder-item ${isHidden ? "is-hidden" : ""}" data-path="${escapeHtml(clientPath)}" style="padding-left: ${paddingLeft}px;">
 								<div class="folder-info">
 									${hasChildren ? `<span class="toggle-icon" onclick="toggleFolder('${safeClientPath}', this)">▼</span>` : `<span class="toggle-icon"></span>`}
-									<a class="folder-link" href="/manage/photos?folderName=${encodeURIComponent(folder)}">
+									<a class="folder-link" href="/manage/photos?folderName=${encodeURIComponent(clientPath)}">
 										<span class="folder-icon">📁</span>
-										<span class="folder-name">${displayName}</span>
+										<span class="folder-name">${escapeHtml(displayName)}</span>
 									</a>
 								</div>
 								<div class="folder-actions">
-									<form action="/manage/toggle-folder" method="post" style="margin: 0;">
-										<input type="hidden" name="folderName" value="${folder}">
-										<button type="submit" class="action-btn toggle-btn ${isHidden ? "show-btn" : "hide-btn"}">
-											${isHidden ? "보이기" : "숨기기"}
-										</button>
-									</form>
+									<button type="button" class="action-btn toggle-btn ${isHidden ? "show-btn" : "hide-btn"}" onclick="toggleFolderVisibilityAjax(this)">
+										${isHidden ? "보이기" : "숨기기"}
+									</button>
 								</div>
 							</li>
 						`;
@@ -79,17 +85,19 @@ function createMainRouter(uploadDir, upload) {
 					.join("");
 
 				folderListHtml = `
-					<div class="container" style="margin-top: 20px;">
-						<h2>📁 사진 폴더 관리</h2>
-						<p style="color: #666; font-size: 14px;">폴더별로 매직미러에 표시할지 설정하세요. (재시작 없이 즉시 반영됩니다)</p>
-						<div style="display: flex; gap: 10px; margin-bottom: 15px;">
-							<form action="/manage/show-all-folders" method="post" style="margin: 0; flex: 1;">
-								<button type="submit" class="toolbar-btn show-all-btn">전체 보이기</button>
-							</form>
-							<form action="/manage/hide-all-folders" method="post" style="margin: 0; flex: 1;">
-								<button type="submit" class="toolbar-btn hide-all-btn">전체 숨기기</button>
-							</form>
+					<div class="card">
+						<div class="card-header-row">
+							<h3>📁 폴더 목록</h3>
+							<div style="display:flex;gap:6px;">
+								<form action="/manage/show-all-folders" method="post" style="margin:0;">
+									<button type="submit" class="mini-btn success">전체 보이기</button>
+								</form>
+								<form action="/manage/hide-all-folders" method="post" style="margin:0;">
+									<button type="submit" class="mini-btn warning">전체 숨기기</button>
+								</form>
+							</div>
 						</div>
+						<p class="card-sub">폴더를 누르면 사진 관리로 이동합니다. 보이기/숨기기는 즉시 반영됩니다.</p>
 						<ul class="folder-list">${folderItems}</ul>
 					</div>
 				`;
@@ -106,10 +114,15 @@ function createMainRouter(uploadDir, upload) {
 	router.post("/upload", upload.array("photos", 50), async (req, res) => {
 		console.log(`\n📤 Upload request received (${req.files ? req.files.length : 0} file(s))`);
 
+		const wantsJson =
+			(req.headers.accept && req.headers.accept.includes("application/json")) ||
+			req.headers["x-requested-with"] === "XMLHttpRequest";
+
 		const customFolder = (req.body.customFolder || "").trim();
 		const selectedFolder = (req.body.folderName || "").trim();
 
 		if (!req.files || req.files.length === 0) {
+			if (wantsJson) return res.status(400).json({ ok: false, error: "업로드된 파일이 없습니다." });
 			return res.status(400).send("<h1>❌ 파일이 업로드되지 않았습니다.</h1>");
 		}
 
@@ -120,6 +133,7 @@ function createMainRouter(uploadDir, upload) {
 			const targetFolder = customFolder || selectedFolder;
 			targetPath = path.resolve(uploadDir, targetFolder);
 			if (!targetPath.startsWith(path.resolve(uploadDir))) {
+				if (wantsJson) return res.status(400).json({ ok: false, error: "잘못된 폴더 경로입니다." });
 				return res.status(400).send("<h1>❌ 잘못된 폴더 경로입니다.</h1>");
 			}
 			displayName = targetFolder;
@@ -140,6 +154,7 @@ function createMainRouter(uploadDir, upload) {
 				fs.mkdirSync(targetPath, { recursive: true });
 			}
 		} catch (err) {
+			if (wantsJson) return res.status(500).json({ ok: false, error: err.message });
 			return res.status(500).send("<h1>❌ 폴더 생성 실패</h1><p>" + err.message + "</p>");
 		}
 
@@ -191,9 +206,20 @@ function createMainRouter(uploadDir, upload) {
 			}
 		}
 
+		const relFolder = path.relative(path.resolve(uploadDir), targetPath).split(path.sep).join("/");
 		console.log(`✅ Upload done: ${movedCount} ok (${heicConvertedCount} HEIC->JPG, ${queuedVideos.length} video queued), ${failedCount} failed`);
 
-		if (selectedFolder) {
+		if (wantsJson) {
+			res.json({
+				ok: true,
+				displayName,
+				folderName: relFolder,
+				movedCount,
+				failedCount,
+				heicConvertedCount,
+				queuedVideosCount: queuedVideos.length
+			});
+		} else if (selectedFolder) {
 			res.redirect(`/manage/photos?folderName=${encodeURIComponent(selectedFolder)}`);
 		} else {
 			const notes = [];
@@ -209,7 +235,7 @@ function createMainRouter(uploadDir, upload) {
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
 				<div style="text-align:center; padding:40px 20px; font-family: sans-serif;">
 					<h1 style="color: #4CAF50;">✅ 업로드 완료!</h1>
-					<p>📁 저장 위치: <strong>${displayName}</strong></p>
+					<p>📁 저장 위치: <strong>${escapeHtml(displayName)}</strong></p>
 					<p>성공: ${movedCount}개 파일 ${failedCount > 0 ? `/ 실패: ${failedCount}개` : ""}</p>
 					${notesHtml}
 					<p style="margin-top: 20px; color: #555;">매직미러 사진 목록에 재시작 없이 자동 반영됩니다 ✨</p>

@@ -13,12 +13,34 @@ const {
 const videoQueue = require("../lib/video-queue");
 const { render } = require("../lib/view-renderer");
 
+const THUMB_DIR = path.join(__dirname, "..", "..", ".cache", "thumbs");
+const BRIGHTNESS_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "brightness.json");
+const DISPLAY_STATE_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "display-state.json");
+
+function escapeHtml(str) {
+	return String(str || "")
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
 function readCpuTempC() {
 	try {
 		const raw = fs.readFileSync("/sys/class/thermal/thermal_zone0/temp", "utf8").trim();
 		return Number((Number(raw) / 1000).toFixed(1));
 	} catch (_) {
 		return null;
+	}
+}
+
+function countThumbCache() {
+	try {
+		if (!fs.existsSync(THUMB_DIR)) return 0;
+		return fs.readdirSync(THUMB_DIR).filter((f) => f.endsWith(".jpg")).length;
+	} catch (_) {
+		return 0;
 	}
 }
 
@@ -40,9 +62,6 @@ function readScreenStatus(callback) {
 		callback(status === "on" || status === "off" ? status : "unknown");
 	});
 }
-
-const BRIGHTNESS_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "brightness.json");
-const DISPLAY_STATE_CACHE_FILE = path.join(__dirname, "..", "..", ".cache", "display-state.json");
 
 function readDisplayStateSync() {
 	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "", updateIntervalMs: 9000 };
@@ -113,17 +132,26 @@ function createManagementRouter(uploadDir) {
 	// --- Folder Management (Live Zero-Restart Refresh) ---
 	router.post("/toggle-folder", (req, res) => {
 		fileUtils.toggleFolderVisibility(uploadDir, req.body.folderName);
-		notifyMagicMirrorRefresh(() => res.redirect("/"));
+		notifyMagicMirrorRefresh(() => res.redirect("/#folders"));
+	});
+
+	router.post("/api/folder/toggle", (req, res) => {
+		const folderName = req.body && req.body.folderName;
+		const result = fileUtils.toggleFolderVisibility(uploadDir, folderName);
+		if (!result) return res.status(404).json({ ok: false, error: "폴더를 찾을 수 없습니다." });
+		notifyMagicMirrorRefresh(() => {
+			res.json({ ok: true, ...result });
+		});
 	});
 
 	router.post("/show-all-folders", (req, res) => {
 		fileUtils.renameAllDirectories(uploadDir, true);
-		notifyMagicMirrorRefresh(() => res.redirect("/"));
+		notifyMagicMirrorRefresh(() => res.redirect("/#folders"));
 	});
 
 	router.post("/hide-all-folders", (req, res) => {
 		fileUtils.renameAllDirectories(uploadDir, false);
-		notifyMagicMirrorRefresh(() => res.redirect("/"));
+		notifyMagicMirrorRefresh(() => res.redirect("/#folders"));
 	});
 
 	router.post("/delete-folder", (req, res) => {
@@ -134,7 +162,7 @@ function createManagementRouter(uploadDir) {
 			return res.status(403).send('기본 폴더는 삭제할 수 없습니다. <a href="/">돌아가기</a>');
 		}
 		fileUtils.deleteFolder(uploadDir, folderName);
-		notifyMagicMirrorRefresh(() => res.redirect("/"));
+		notifyMagicMirrorRefresh(() => res.redirect("/#folders"));
 	});
 
 	router.post("/create-subfolder", (req, res) => {
@@ -155,127 +183,281 @@ function createManagementRouter(uploadDir) {
 				res.redirect(`/manage/photos?folderName=${encodeURIComponent(parentFolder)}`);
 			});
 		} catch (error) {
-			res.status(500).send(`<h1>❌ 폴더 생성 실패</h1><p>${error.message}</p><a href="/">돌아가기</a>`);
+			res.status(500).send(`<h1>❌ 폴더 생성 실패</h1><p>${escapeHtml(error.message)}</p><a href="/">돌아가기</a>`);
 		}
 	});
 
-	// --- Photo Management Page (Fast Cached 360px Thumbnails + EXIF Date Sort + Favorites) ---
+	// --- Photo Management Page (Folder + Virtual Albums + Search + Ajax + Swipe + Batch + Rotate) ---
 	router.get("/photos", async (req, res) => {
-		const folderName = req.query.folderName;
-		const sortBy = req.query.sortBy || "exif_desc";
+		const virtual = (req.query.virtual || "").toString().trim().toLowerCase();
+		const folderName = (req.query.folderName || "").toString().trim();
+		const sortBy = (req.query.sortBy || "exif_desc").toString().trim();
+		const queryText = (req.query.q || "").toString().trim();
+		const showAll = req.query.showAll === "1";
 
-		if (!folderName) return res.redirect("/");
-
-		const folderPath = path.join(uploadDir, folderName);
-		if (!path.resolve(folderPath).startsWith(path.resolve(uploadDir)) || !fs.existsSync(folderPath)) {
-			return res.status(404).send('<h1>❌ 폴더를 찾을 수 없습니다.</h1><a href="/">돌아가기</a>');
+		const isVirtual = ["favorites", "recent", "videos", "all"].includes(virtual);
+		if (!isVirtual && !folderName) {
+			return res.redirect("/#folders");
 		}
 
-		const subfolders = await fileUtils.getSubdirectories(folderPath);
-		const subfolderListHtml =
-			subfolders.length > 0
-				? `<div class="subfolder-list-container">
-					<h4>하위 폴더 목록</h4>
-					<ul class="subfolder-list">
-						${subfolders
-							.map((sub) => {
-								const subFullPath = path.join(folderName, sub.name);
-								const displaySubName = sub.isHidden ? sub.name.substring(1) : sub.name;
-								return `
-									<li class="subfolder-item ${sub.isHidden ? "is-hidden" : ""}">
-										<a href="/manage/photos?folderName=${encodeURIComponent(subFullPath)}" class="subfolder-link">
-											<span>📁</span> ${displaySubName}
-										</a>
-										<div class="subfolder-actions">
-											<form action="/manage/toggle-folder" method="post" style="margin: 0;">
-												<input type="hidden" name="folderName" value="${subFullPath}">
-												<button type="submit" class="action-btn toggle-btn ${sub.isHidden ? "show-btn" : "hide-btn"}">
-													${sub.isHidden ? "보이기" : "숨기기"}
-												</button>
-											</form>
-										</div>
-									</li>`;
-							})
-							.join("")}
-					</ul>
-				</div>`
-				: "";
+		let displayName = "";
+		let subfolderListHtml = "";
+		let mediaFiles = [];
+		let totalCount = 0;
+		let truncatedNoticeHtml = "";
 
-		const mediaFiles = fileUtils.getMediaFiles(folderPath, sortBy, uploadDir);
+		if (isVirtual) {
+			const titles = {
+				favorites: "⭐ 전체 즐겨찾기",
+				recent: "🆕 최근 촬영 사진",
+				videos: "🎬 전체 동영상",
+				all: queryText ? `🔍 검색: "${queryText}"` : "🖼️ 전체 사진 모아보기"
+			};
+			displayName = titles[virtual] || "전체 사진";
+			mediaFiles = fileUtils.getAllMediaFiles(uploadDir, { mode: virtual, sortBy, query: queryText });
+			totalCount = mediaFiles.length;
+
+			if ((virtual === "recent" || virtual === "all") && !queryText && !showAll && mediaFiles.length > 240) {
+				mediaFiles = mediaFiles.slice(0, 240);
+				truncatedNoticeHtml = `
+					<div class="truncation-banner">
+						전체 ${totalCount}개 중 최신 240개를 표시 중입니다.
+						<a href="/manage/photos?virtual=${encodeURIComponent(virtual)}&sortBy=${encodeURIComponent(sortBy)}&showAll=1" class="mini-link-btn">전체 ${totalCount}개 모두 보기</a>
+					</div>`;
+			}
+		} else {
+			const safe = fileUtils.resolveSafeUploadPath(uploadDir, folderName);
+			if (!safe || !fs.existsSync(safe.fullPath)) {
+				return res.status(404).send('<h1>❌ 폴더를 찾을 수 없습니다.</h1><a href="/">돌아가기</a>');
+			}
+			displayName = `📁 ${folderName.replace(/!/g, "").split("/").join(" / ")}`;
+
+			const subfolders = await fileUtils.getSubdirectories(safe.fullPath);
+			if (subfolders.length > 0) {
+				subfolderListHtml = `
+					<div class="subfolder-list-container">
+						<h4>하위 폴더</h4>
+						<div class="subfolder-grid">
+							${subfolders
+								.map((sub) => {
+									const subFullPath = path.join(folderName, sub.name).split(path.sep).join("/");
+									const displaySubName = sub.isHidden ? sub.name.substring(1) : sub.name;
+									return `
+										<a href="/manage/photos?folderName=${encodeURIComponent(subFullPath)}" class="subfolder-link ${sub.isHidden ? "is-hidden" : ""}">
+											<span class="subfolder-icon">📁</span>
+											<span class="subfolder-name">${escapeHtml(displaySubName)}</span>
+										</a>`;
+								})
+								.join("")}
+						</div>
+					</div>`;
+			}
+
+			mediaFiles = fileUtils.getMediaFiles(safe.fullPath, sortBy, uploadDir);
+			totalCount = mediaFiles.length;
+		}
+
 		const photoListHtml =
 			mediaFiles.length > 0
 				? mediaFiles
-						.map((fileInfo) => {
+						.map((fileInfo, idx) => {
 							const file = fileInfo.name;
-							const isHidden = file.startsWith("!");
-							const displayName = isHidden ? file.substring(1) : file;
-							const encodedRel = path.join(folderName, file).split(path.sep).map(encodeURIComponent).join("/");
+							const isHidden = fileInfo.isHidden;
+							const displayFileName = isHidden ? file.substring(1) : file;
+							const encodedRel = fileInfo.relPath.split("/").map(encodeURIComponent).join("/");
 							const fullUrl = `/uploads/${encodedRel}`;
 							const thumbUrl = `/thumb/${encodedRel}`;
-							const ext = path.extname(file).toLowerCase();
-							const isVideo = [".mp4", ".webm", ".ogg", ".mov"].includes(ext);
+							const downloadUrl = `/download/${encodedRel}`;
+							const ext = fileInfo.ext;
+							const isVideo = fileInfo.isVideo;
+							const isRotatable = fileInfo.isRotatable;
 
-							const safeRelAttr = fileInfo.relPath.replace(/'/g, "\\'");
 							const mediaElement = isVideo
-								? `<video src="${fullUrl}#t=0.5" preload="metadata" muted playsinline style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}', '${safeRelAttr}')"></video>`
-								: `<img src="${thumbUrl}" alt="${displayName}" loading="lazy" decoding="async" style="cursor: pointer;" onclick="openFullscreen('${fullUrl}', '${ext}', '${safeRelAttr}')">`;
+								? `<video src="${fullUrl}#t=0.5" preload="metadata" muted playsinline class="card-media"></video>`
+								: `<img src="${thumbUrl}" alt="${escapeHtml(displayFileName)}" loading="lazy" decoding="async" class="card-media">`;
 
-							const favBtnStyle = fileInfo.isFavorite
-								? "background:#f59f00; color:#111; font-weight:700;"
-								: "background:#e9ecef; color:#495057;";
+							const folderTag = isVirtual && fileInfo.folderRel
+								? `<div class="photo-folder-tag">📁 ${escapeHtml(fileInfo.folderRel.replace(/!/g, ""))}</div>`
+								: "";
 
 							return `
-								<div class="photo-card ${isHidden ? "is-hidden" : ""}">
-									<div class="photo-image-container">
+								<div class="photo-card ${isHidden ? "is-hidden" : ""}"
+									data-idx="${idx}"
+									data-rel="${escapeHtml(fileInfo.relPath)}"
+									data-url="${escapeHtml(fullUrl)}"
+									data-thumb="${escapeHtml(thumbUrl)}"
+									data-download="${escapeHtml(downloadUrl)}"
+									data-ext="${escapeHtml(ext)}"
+									data-name="${escapeHtml(displayFileName)}"
+									data-date="${escapeHtml(fileInfo.dateLabel || "")}"
+									data-folder="${escapeHtml(fileInfo.folderRel || "")}"
+									data-fav="${fileInfo.isFavorite ? "1" : "0"}"
+									data-hidden="${isHidden ? "1" : "0"}"
+									data-video="${isVideo ? "1" : "0"}"
+									data-rotatable="${isRotatable ? "1" : "0"}">
+									<div class="photo-image-container" onclick="handleCardImageClick(this.closest('.photo-card'))">
 										${mediaElement}
+										<div class="select-check">✓</div>
 										${isVideo ? '<div class="video-indicator">▶</div>' : ""}
-										${fileInfo.isFavorite ? '<div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.65);color:#ffd43b;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;">⭐</div>' : ""}
-										${isHidden ? '<div class="hidden-overlay"><span>숨김</span></div>' : ""}
+										<div class="fav-corner-badge" style="display:${fileInfo.isFavorite ? "block" : "none"};">⭐</div>
+										<div class="hidden-overlay" style="display:${isHidden ? "flex" : "none"};"><span>🙈 숨김</span></div>
 									</div>
-									<div class="photo-name" title="${displayName}">
-										${displayName}
-										<div style="font-size:11px;color:#888;margin-top:2px;">🗓️ ${fileInfo.dateLabel || "-"}</div>
+									<div class="photo-meta">
+										<div class="photo-name" title="${escapeHtml(displayFileName)}">${escapeHtml(displayFileName)}</div>
+										<div class="photo-date">🗓️ ${escapeHtml(fileInfo.dateLabel || "-")}</div>
+										${folderTag}
 									</div>
 									<div class="photo-actions">
-										<button type="button" class="action-btn" style="background:#007bff;color:#fff;" onclick="castToFrame('${safeRelAttr}', false)" title="지금 액자에 띄우기">📺</button>
-										<form action="/manage/toggle-favorite" method="post" style="margin:0;">
-											<input type="hidden" name="folderName" value="${folderName}">
-											<input type="hidden" name="relPath" value="${fileInfo.relPath}">
-											<input type="hidden" name="sortBy" value="${sortBy}">
-											<button type="submit" class="action-btn" style="${favBtnStyle}">${fileInfo.isFavorite ? "★" : "☆"}</button>
-										</form>
-										<form action="/manage/toggle-photo" method="post" style="margin:0;">
-											<input type="hidden" name="folderName" value="${folderName}"><input type="hidden" name="fileName" value="${file}">
-											<button type="submit" class="action-btn toggle-btn ${isHidden ? "show-btn" : "hide-btn"}">${isHidden ? "보이기" : "숨기기"}</button>
-										</form>
-										<form action="/manage/delete-photo" method="post" onsubmit="return confirm('정말 이 파일을 삭제하시겠습니까?');" style="margin:0;">
-											<input type="hidden" name="folderName" value="${folderName}"><input type="hidden" name="fileName" value="${file}">
-											<button type="submit" class="action-btn delete-btn">삭제</button>
-										</form>
+										<button type="button" class="action-btn cast-btn" onclick="castCard(this)" title="지금 액자에 띄우기">📺</button>
+										<button type="button" class="action-btn fav-btn ${fileInfo.isFavorite ? "is-fav" : ""}" onclick="toggleFavCard(this)" title="즐겨찾기">${fileInfo.isFavorite ? "★" : "☆"}</button>
+										<button type="button" class="action-btn toggle-btn ${isHidden ? "show-btn" : "hide-btn"}" onclick="toggleHideCard(this)" title="숨기기/보이기">${isHidden ? "보이기" : "숨기기"}</button>
+										<button type="button" class="action-btn delete-btn" onclick="deleteCard(this)" title="삭제">삭제</button>
 									</div>
 								</div>`;
 						})
 						.join("")
-				: '<p class="no-photos-message">이 폴더에는 해당 미디어 파일이 없습니다.</p>';
+				: '<p class="no-photos-message">표시할 사진·동영상이 없습니다.</p>';
 
-		const sortLink = (key, text) => {
-			const isActive = sortBy === key;
-			const url = `?folderName=${encodeURIComponent(folderName)}&sortBy=${key}`;
-			return `<a href="${url}" class="sort-link ${isActive ? "active" : ""}">${text}</a>`;
+		const buildSortUrl = (key) => {
+			const params = new URLSearchParams();
+			if (isVirtual) params.set("virtual", virtual);
+			else params.set("folderName", folderName);
+			params.set("sortBy", key);
+			if (queryText) params.set("q", queryText);
+			if (showAll) params.set("showAll", "1");
+			return `?${params.toString()}`;
 		};
-		const sortLinks = `${sortLink("exif_desc", "촬영일 최신순")} ${sortLink("exif_asc", "촬영일 오래된순")} ${sortLink("fav_first", "⭐ 즐겨찾기 우선")} ${sortLink("name_asc", "이름순")}`;
+
+		const sortLink = (key, text) =>
+			`<a href="${buildSortUrl(key)}" class="sort-link ${sortBy === key ? "active" : ""}">${text}</a>`;
+		const sortLinks = `${sortLink("exif_desc", "촬영일 최신순")} ${sortLink("exif_asc", "오래된순")} ${sortLink("fav_first", "⭐ 즐겨찾기 우선")} ${sortLink("name_asc", "이름순")}`;
+
+		const virtualTabsHtml = `
+			<div class="virtual-tabs">
+				<a href="/manage/photos?virtual=favorites" class="vtab ${virtual === "favorites" ? "active" : ""}">⭐ 전체 즐겨찾기</a>
+				<a href="/manage/photos?virtual=recent" class="vtab ${virtual === "recent" ? "active" : ""}">🆕 최근 촬영순</a>
+				<a href="/manage/photos?virtual=videos" class="vtab ${virtual === "videos" ? "active" : ""}">🎬 전체 동영상</a>
+				<a href="/#folders" class="vtab">📁 폴더 목록</a>
+			</div>`;
 
 		const pageContent = render("manage-photos", {
-			displayName: folderName.replace(/!/g, "").split(path.sep).join(" / "),
-			folderName,
+			displayName: escapeHtml(displayName),
+			folderName: escapeHtml(folderName),
+			totalCount: String(totalCount),
+			shownCount: String(mediaFiles.length),
+			isVirtualClass: isVirtual ? "is-virtual" : "",
+			queryText: escapeHtml(queryText),
+			virtualTabsHtml,
 			sortLinks,
 			subfolderListHtml,
+			truncatedNoticeHtml,
 			photoListHtml
 		});
 
 		res.send(pageContent);
 	});
 
+	// --- Ajax Photo Action APIs (Zero Page Reload) ---
+	router.post("/api/photo/favorite", (req, res) => {
+		const relPath = req.body && req.body.relPath;
+		if (!relPath || typeof relPath !== "string") {
+			return res.status(400).json({ ok: false, error: "사진 경로가 필요합니다." });
+		}
+		const result = fileUtils.toggleFavoritePath(relPath);
+		callMagicMirrorApi("POST", "/refresh", {}, () => {});
+		res.json({ ok: true, relPath: fileUtils.normalizeRelPath(relPath), ...result });
+	});
+
+	router.post("/api/photo/toggle-hide", (req, res) => {
+		const relPath = req.body && req.body.relPath;
+		const forceHidden = typeof req.body.hidden === "boolean" ? req.body.hidden : null;
+		if (!relPath || typeof relPath !== "string") {
+			return res.status(400).json({ ok: false, error: "사진 경로가 필요합니다." });
+		}
+		const result = fileUtils.togglePhotoByRelPath(uploadDir, relPath, forceHidden);
+		if (!result) {
+			return res.status(404).json({ ok: false, error: "파일을 찾을 수 없습니다." });
+		}
+		const encodedRel = result.newRelPath.split("/").map(encodeURIComponent).join("/");
+		notifyMagicMirrorRefresh(() => {
+			res.json({
+				ok: true,
+				...result,
+				fullUrl: `/uploads/${encodedRel}`,
+				thumbUrl: `/thumb/${encodedRel}`,
+				downloadUrl: `/download/${encodedRel}`
+			});
+		});
+	});
+
+	router.post("/api/photo/delete", (req, res) => {
+		const relPath = req.body && req.body.relPath;
+		if (!relPath || typeof relPath !== "string") {
+			return res.status(400).json({ ok: false, error: "사진 경로가 필요합니다." });
+		}
+		const deleted = fileUtils.deletePhotoByRelPath(uploadDir, relPath);
+		if (!deleted) {
+			return res.status(404).json({ ok: false, error: "삭제할 파일을 찾을 수 없습니다." });
+		}
+		notifyMagicMirrorRefresh(() => {
+			res.json({ ok: true, relPath: fileUtils.normalizeRelPath(relPath) });
+		});
+	});
+
+	router.post("/api/photo/rotate", async (req, res) => {
+		const relPath = req.body && req.body.relPath;
+		const angle = req.body && req.body.angle ? Number(req.body.angle) : 90;
+		if (!relPath || typeof relPath !== "string") {
+			return res.status(400).json({ ok: false, error: "사진 경로가 필요합니다." });
+		}
+		try {
+			const result = await fileUtils.rotatePhotoByRelPath(uploadDir, relPath, angle);
+			const encodedRel = result.relPath.split("/").map(encodeURIComponent).join("/");
+			const bust = Date.now();
+			notifyMagicMirrorRefresh(() => {
+				res.json({
+					ok: true,
+					relPath: result.relPath,
+					angle: result.angle,
+					fullUrl: `/uploads/${encodedRel}?v=${bust}`,
+					thumbUrl: `/thumb/${encodedRel}?v=${bust}`
+				});
+			});
+		} catch (err) {
+			res.status(500).json({ ok: false, error: err.message });
+		}
+	});
+
+	router.post("/api/photos/batch", (req, res) => {
+		const action = req.body && req.body.action;
+		const relPaths = Array.isArray(req.body && req.body.relPaths) ? req.body.relPaths : [];
+		if (!action || relPaths.length === 0) {
+			return res.status(400).json({ ok: false, error: "작업과 사진 목록이 필요합니다." });
+		}
+		const results = [];
+		for (const relPath of relPaths) {
+			if (typeof relPath !== "string") continue;
+			if (action === "favorite" || action === "unfavorite") {
+				const r = fileUtils.setFavoritePath(relPath, action === "favorite");
+				results.push({ oldRelPath: relPath, newRelPath: relPath, isFavorite: r.isFavorite });
+			} else if (action === "hide" || action === "show") {
+				const r = fileUtils.togglePhotoByRelPath(uploadDir, relPath, action === "hide");
+				if (r) {
+					const enc = r.newRelPath.split("/").map(encodeURIComponent).join("/");
+					results.push({ ...r, fullUrl: `/uploads/${enc}`, thumbUrl: `/thumb/${enc}`, downloadUrl: `/download/${enc}` });
+				}
+			} else if (action === "delete") {
+				if (fileUtils.deletePhotoByRelPath(uploadDir, relPath)) {
+					results.push({ oldRelPath: relPath, deleted: true });
+				}
+			}
+		}
+		notifyMagicMirrorRefresh(() => {
+			res.json({ ok: true, action, count: results.length, results });
+		});
+	});
+
+	// --- Legacy Form Endpoints (Kept for Compatibility) ---
 	router.post("/toggle-favorite", (req, res) => {
 		const { folderName, relPath, sortBy } = req.body;
 		if (relPath) {
@@ -319,7 +501,7 @@ function createManagementRouter(uploadDir) {
 		notifyMagicMirrorRefresh(() => res.redirect(`/manage/photos?folderName=${encodeURIComponent(folderName)}`));
 	});
 
-	// --- Display State API (Gallery Mode & Playback Filter) ---
+	// --- Display State API (Gallery Mode, Playback Filter, Slide Speed) ---
 	router.get("/api/display-state", (req, res) => {
 		res.json({ ok: true, ...readDisplayStateSync() });
 	});
@@ -358,7 +540,7 @@ function createManagementRouter(uploadDir) {
 		});
 	});
 
-	// --- Brightness Control API (DDC/CI VCP 0x10) ---
+	// --- Brightness Control API (Software Dimming Overlay) ---
 	router.get("/api/brightness", (req, res) => {
 		readBrightness((brightness) => {
 			if (brightness === null) {
@@ -387,12 +569,17 @@ function createManagementRouter(uploadDir) {
 		const freeMemMB = Math.round(os.freemem() / 1024 / 1024);
 		const usedMemMB = totalMemMB - freeMemMB;
 		const cpuTempC = readCpuTempC();
+		const favSet = fileUtils.loadFavorites();
+		const thumbCacheCount = countThumbCache();
 
 		readDiskUsage((disk) => {
 			isMagicMirrorRunning((mmRunning) => {
 				readScreenStatus((screenStatus) => {
 					const afterBrightness = (brightness) => {
 						const finalize = (mmStatus) => {
+							if (mmStatus && mmStatus.currentPhoto && mmStatus.currentPhoto.companionPath) {
+								mmStatus.currentPhoto.companionIsFavorite = favSet.has(mmStatus.currentPhoto.companionPath);
+							}
 							res.json({
 								ok: true,
 								cpuTempC,
@@ -402,7 +589,8 @@ function createManagementRouter(uploadDir) {
 								screenStatus,
 								brightness,
 								displayState: readDisplayStateSync(),
-								favoriteCount: fileUtils.loadFavorites().size,
+								favoriteCount: favSet.size,
+								thumbCacheCount,
 								visibleFolders,
 								mm: mmStatus,
 								videoQueue: videoQueue.getStatus()
@@ -426,6 +614,7 @@ function createManagementRouter(uploadDir) {
 
 	router.post("/api/remote", (req, res) => {
 		const action = req.body && req.body.action;
+		const relPath = req.body && req.body.relPath;
 		if (action === "screen-on") {
 			execFile("/home/pi/screenOn.sh", [], { timeout: 15000 }, (err) => {
 				if (err) return res.status(500).json({ ok: false, error: err.message });
@@ -447,7 +636,22 @@ function createManagementRouter(uploadDir) {
 			});
 			return;
 		}
+		if (action === "hide-photo" && relPath) {
+			const r = fileUtils.togglePhotoByRelPath(uploadDir, relPath, true);
+			if (!r) return res.status(404).json({ ok: false, error: "사진을 찾을 수 없습니다." });
+			notifyMagicMirrorRefresh(() => {
+				callMagicMirrorApi("POST", "/control", { action: "next" }, () => {
+					res.json({ ok: true, hiddenPath: r.newRelPath });
+				});
+			});
+			return;
+		}
 		if (action === "toggle-favorite") {
+			if (relPath) {
+				const r = fileUtils.toggleFavoritePath(relPath);
+				callMagicMirrorApi("POST", "/refresh", {}, () => {});
+				return res.json({ ok: true, path: relPath, ...r });
+			}
 			callMagicMirrorApi("POST", "/favorite", {}, (err, data) => {
 				if (err) return res.status(500).json({ ok: false, error: err.message });
 				return res.json({ ok: true, ...data });
@@ -466,7 +670,7 @@ function createManagementRouter(uploadDir) {
 
 	router.post("/convert-all-videos", (req, res) => {
 		const started = videoQueue.enqueueAllVideos();
-		res.redirect(started ? "/?status=conversion_started" : "/?status=conversion_running");
+		res.redirect(started ? "/?status=conversion_started#status" : "/?status=conversion_running#status");
 	});
 
 	router.post("/restart-mm", (req, res) => {
