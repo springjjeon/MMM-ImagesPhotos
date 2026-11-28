@@ -28,7 +28,7 @@ Module.register(ourModuleName, {
     transitionMode: "black", // "black" | "crossfade"
     enablePortraitCollage: true,
     collageProbability: 0.5,
-    stillProbability: 0.25,
+    stillProbability: 0.35,
     seasonalWeight: 3,
     imageEffects: [
       "ip-zoom", "ip-panright", "ip-panleft", "ip-panup", "ip-pandown",
@@ -1022,52 +1022,52 @@ Module.register(ourModuleName, {
   pickRegularEffect(photoImage = null) {
     const timing = this.getMotionTiming();
     const style = this.motionStyle || "cinematic";
-
-    if (style === "still") {
-      return { effectClass: "ip-still", duration: timing.duration, delay: timing.delay, transformOrigin: null, label: "ip-still" };
-    }
-
-    const baseStillProb = typeof this.config.stillProbability === "number" ? this.config.stillProbability : 0.25;
-    const stillProb = style === "calm" ? 0.6 : baseStillProb;
-    if (Math.random() < stillProb) {
-      return { effectClass: "ip-still", duration: timing.duration, delay: timing.delay, transformOrigin: null, label: "ip-still" };
-    }
-
-    // Revive YuNet face-centered Ken Burns zoom (45% on photos with detected faces)
-    const faceOrigin = photoImage ? this.computeFaceObjectPosition(photoImage) : null;
-    const allowFaceZoom = this.config.faceDetection !== false && this.config.imageEffects.includes("ip-face-zoom");
-    if (faceOrigin && allowFaceZoom && Math.random() < (style === "calm" ? 0.65 : 0.45)) {
-      const cls = Math.random() < 0.6 ? "ip-face-zoom-in" : "ip-face-zoom-out";
-      return {
-        effectClass: cls,
-        duration: timing.duration,
-        delay: timing.delay,
-        transformOrigin: faceOrigin,
-        label: `${cls} ${timing.duration}`
-      };
-    }
-
-    if (style === "calm") {
-      const calmPool = ["ip-zoom", "ip-zoom-out"];
-      const cls = calmPool[Math.floor(Math.random() * calmPool.length)];
-      return { effectClass: cls, duration: timing.duration, delay: timing.delay, transformOrigin: faceOrigin, label: `${cls} ${timing.duration}` };
-    }
-
-    const movingEffects = this.config.imageEffects
-      .filter((e) => e !== "ip-face-zoom" && e !== "ip-still")
-      .concat(["ip-zoom-out"]);
-    if (movingEffects.length === 0) {
-      return { effectClass: "ip-still", duration: timing.duration, delay: timing.delay, transformOrigin: null, label: "ip-still" };
-    }
-
-    const randomEffect = movingEffects[Math.floor(Math.random() * movingEffects.length)];
-    return {
-      effectClass: randomEffect,
+    const mk = (cls, origin = null) => ({
+      effectClass: cls,
       duration: timing.duration,
       delay: timing.delay,
-      transformOrigin: randomEffect.startsWith("ip-zoom") ? faceOrigin : null,
-      label: `${randomEffect} ${timing.duration}`
-    };
+      transformOrigin: origin,
+      label: cls === "ip-still" ? "ip-still" : `${cls} ${timing.duration}`
+    });
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    if (style === "still") {
+      return mk("ip-still");
+    }
+
+    const faceOrigin = photoImage ? this.computeFaceObjectPosition(photoImage) : null;
+    const allowFaceZoom = this.config.faceDetection !== false && this.config.imageEffects.includes("ip-face-zoom");
+    const hasFace = Boolean(faceOrigin && allowFaceZoom);
+
+    if (style === "calm") {
+      if (Math.random() < 0.6) return mk("ip-still");
+      if (hasFace && Math.random() < 0.65) {
+        return mk(Math.random() < 0.6 ? "ip-face-zoom-in" : "ip-face-zoom-out", faceOrigin);
+      }
+      return mk(pick(["ip-zoom", "ip-zoom-out"]), faceOrigin);
+    }
+
+    // Option 3 Smart Weights (cinematic default):
+    // Portrait/Face photos: Still 35% | Face Zoom 45% | Straight Pan 15% | Zoom+Pan 5% (No diagonal)
+    // Landscape/No-face photos: Still 25% | Zoom 30% | Straight Pan 30% | Diagonal Pan 15%
+    const r = Math.random();
+    const straightPans = ["ip-panleft", "ip-panright", "ip-panup", "ip-pandown"];
+    const zoomPans = ["ip-zoom-panleft", "ip-zoom-panright", "ip-zoom-panup", "ip-zoom-pandown"];
+    const diagPans = ["ip-pan-diag-tl-br", "ip-pan-diag-tr-bl", "ip-pan-diag-bl-tr", "ip-pan-diag-br-tl"];
+
+    if (hasFace) {
+      if (r < 0.35) return mk("ip-still");
+      if (r < 0.80) {
+        return mk(Math.random() < 0.6 ? "ip-face-zoom-in" : "ip-face-zoom-out", faceOrigin);
+      }
+      if (r < 0.95) return mk(pick(straightPans));
+      return mk(pick(zoomPans), faceOrigin);
+    }
+
+    if (r < 0.25) return mk("ip-still");
+    if (r < 0.55) return mk(Math.random() < 0.6 ? "ip-zoom" : "ip-zoom-out");
+    if (r < 0.85) return mk(pick(straightPans));
+    return mk(pick(diagPans));
   },
 
   pickCollageEffectPair(photoA, photoB) {
@@ -1085,17 +1085,18 @@ Module.register(ourModuleName, {
       return [mk("ip-still"), mk("ip-still")];
     }
 
-    const stillProb = style === "calm" ? 0.55 : (typeof this.config.stillProbability === "number" ? this.config.stillProbability : 0.25);
-    if (Math.random() < stillProb) {
-      return [mk("ip-still"), mk("ip-still")];
-    }
-
     const faceA = this.computeFaceObjectPosition(photoA);
     const faceB = this.computeFaceObjectPosition(photoB);
     const r = Math.random();
 
-    if (r < 0.45) {
-      // Harmonious opposing zoom (one zooms in gently, companion zooms out gently)
+    if (style === "calm") {
+      // Calm collage: Still+Still 55% | Focus+Still 27% | Opposing Zoom 18%
+      if (r < 0.55) return [mk("ip-still"), mk("ip-still")];
+      if (r < 0.82) {
+        const focusA = mk(faceA ? "ip-face-zoom-in" : "ip-zoom", faceA);
+        const focusB = mk(faceB ? "ip-face-zoom-in" : "ip-zoom", faceB);
+        return Math.random() < 0.5 ? [focusA, mk("ip-still")] : [mk("ip-still"), focusB];
+      }
       const inA = faceA ? "ip-face-zoom-in" : "ip-zoom";
       const outB = faceB ? "ip-face-zoom-out" : "ip-zoom-out";
       const inB = faceB ? "ip-face-zoom-in" : "ip-zoom";
@@ -1103,14 +1104,26 @@ Module.register(ourModuleName, {
       return Math.random() < 0.5 ? [mk(inA, faceA), mk(outB, faceB)] : [mk(outA, faceA), mk(inB, faceB)];
     }
 
-    if (r < 0.78 || style === "calm") {
-      // One calm still + one gentle face/zoom focus
+    // Balanced gallery collage (cinematic):
+    // Still+Still 35% | Focus+Still 35% | Opposing Zoom 20% | Shared Pan 10%
+    if (r < 0.35) {
+      return [mk("ip-still"), mk("ip-still")];
+    }
+
+    if (r < 0.70) {
       const focusA = mk(faceA ? "ip-face-zoom-in" : "ip-zoom", faceA);
       const focusB = mk(faceB ? "ip-face-zoom-in" : "ip-zoom", faceB);
       return Math.random() < 0.5 ? [focusA, mk("ip-still")] : [mk("ip-still"), focusB];
     }
 
-    // Coordinated gentle drift in the same direction
+    if (r < 0.90) {
+      const inA = faceA ? "ip-face-zoom-in" : "ip-zoom";
+      const outB = faceB ? "ip-face-zoom-out" : "ip-zoom-out";
+      const inB = faceB ? "ip-face-zoom-in" : "ip-zoom";
+      const outA = faceA ? "ip-face-zoom-out" : "ip-zoom-out";
+      return Math.random() < 0.5 ? [mk(inA, faceA), mk(outB, faceB)] : [mk(outA, faceA), mk(inB, faceB)];
+    }
+
     const sharedDir = Math.random() < 0.5 ? "ip-panright" : "ip-panleft";
     return [mk(sharedDir), mk(sharedDir)];
   },
