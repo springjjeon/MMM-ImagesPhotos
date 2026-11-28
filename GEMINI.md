@@ -54,10 +54,12 @@ MMM-ImagesPhotos/
   - `검정 화면(1.0초) → 페이드인(1.5초) → 표시(updateInterval) → 페이드아웃(1.5초)`
   - 풀스크린 모드에서는 `updateDom(0)`을 사용해 고정 QR 오버레이(`.mmip-overlay-root`)가 깜빡이지 않도록 유지
   - `config.js`에서 `transitionMode: "crossfade"`로 전환 가능
-- **정지 vs 움직임 비율 (`stillProbability: 0.25`)**:
-  - 모든 사진에 대해 **25% `ip-still`**, **75% 움직이는 팬/줌 효과** 적용
-  - 모든 이동·확대 효과는 **15% (`scale(1.15)` / `translate(15%)`) 이내**로 제한 (`20초 ~ 40초` 무작위 지속)
-  - `ip-zoom-pan*`은 `1.05x → 1.15x` 확대와 이동이 동시에 동작
+- **시네마틱 애니메이션 & YuNet 얼굴 줌 (`motionStyle: "cinematic" | "calm" | "still"`)**:
+  - **표시 시간 동기화 (`getMotionTiming`)**: 모션 지속 시간을 현재 `updateInterval + fadeDuration × 2`에 자동 동기화하고, `black` 전환 시 `animation-delay: 1s`로 검정 구간 선행 소실 방지
+  - **YuNet 얼굴 중심 줌 (`ip-face-zoom-in` / `ip-face-zoom-out`)**: 얼굴 검출 사진에서 45% 확률로 실제 얼굴 좌표를 `transform-origin`으로 지정해 부드럽게 줌인/줌아웃
+  - **콜라주 조화 페어링 (`pickCollageEffectPair`)**: 2장 콜라주에서 대칭 줌(인/아웃), 한쪽 정지+한쪽 얼굴 줌, 동일 방향 은은한 패닝 중 선택
+  - **안전 마진 & 일시정지 동기화**: 팬 이동량을 `scale(1.15)` 안전 범위(`±5.2%` / `±4.0%`) 이내 + `cubic-bezier(0.25, 0.08, 0.25, 1)` 적용, 일시정지 시 `body.mmip-paused`로 `animation-play-state: paused` 정지
+  - 리모컨에서 모션 스타일(`시네마틱`/`차분하게`/`완전 정지`) 및 전환 모드(`검정 페이드`/`크로스페이드`) 실시간 변경·영구 저장
 - **가중치 셔플 덱 (`seasonalWeight: 3`)**:
   - `sequential: false`일 때 Fisher-Yates 셔플 덱으로 순회하며, 인접 동일 사진 중복 방지 적용
   - **오늘(±0일) · 이맘때(±7일) 추억 사진만 3배 가중치** (같은 계절 사진 가중치 제외)

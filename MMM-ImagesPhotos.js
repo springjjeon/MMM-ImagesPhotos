@@ -213,6 +213,9 @@ Module.register(ourModuleName, {
 
   setPaused(shouldPause) {
     this.paused = Boolean(shouldPause);
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("mmip-paused", this.paused);
+    }
     this.updatePauseBadge();
     if (this.paused) {
       if (this.timer) {
@@ -312,6 +315,12 @@ Module.register(ourModuleName, {
     }
     if (typeof state.filterFolder === "string") {
       this.filterFolder = state.filterFolder;
+    }
+    if (typeof state.motionStyle === "string" && ["cinematic", "calm", "still"].includes(state.motionStyle)) {
+      this.motionStyle = state.motionStyle;
+    }
+    if (typeof state.transitionMode === "string" && ["black", "crossfade"].includes(state.transitionMode)) {
+      this.config.transitionMode = state.transitionMode;
     }
     if (typeof state.updateIntervalMs === "number" && state.updateIntervalMs >= 3000) {
       const prevInterval = this.config.updateInterval;
@@ -969,17 +978,112 @@ Module.register(ourModuleName, {
     return videoExtensions.some((ext) => url.endsWith(`.${ext}`));
   },
 
-  pickRegularEffect() {
-    const stillProb = typeof this.config.stillProbability === "number" ? this.config.stillProbability : 0.25;
-    const movingEffects = this.config.imageEffects.filter((e) => e !== "ip-face-zoom" && e !== "ip-still");
-    const randomDuration = (20 + Math.random() * 20).toFixed(2) + "s";
+  getMotionTiming() {
+    const cfg = this.config || {};
+    const defs = this.transitionDefaults || {};
+    const displayMs = cfg.updateInterval || defs.displayDuration || 9000;
+    const fadeMs = cfg.fadeDuration || defs.fadeDuration || 1500;
+    const isCrossfade = this.fullscreen && cfg.transitionMode === "crossfade";
+    const blackMs = isCrossfade ? 0 : (cfg.blackDuration || defs.blackDuration || 1000);
+    const totalSec = Math.max(6, (displayMs + fadeMs * 2) / 1000).toFixed(2) + "s";
+    const delaySec = (blackMs / 1000).toFixed(2) + "s";
+    return { duration: totalSec, delay: delaySec };
+  },
 
-    if (movingEffects.length === 0 || Math.random() < stillProb) {
-      return { effectClass: "ip-still", duration: randomDuration, label: "ip-still" };
+  pickRegularEffect(photoImage = null) {
+    const timing = this.getMotionTiming();
+    const style = this.motionStyle || "cinematic";
+
+    if (style === "still") {
+      return { effectClass: "ip-still", duration: timing.duration, delay: timing.delay, transformOrigin: null, label: "ip-still" };
+    }
+
+    const baseStillProb = typeof this.config.stillProbability === "number" ? this.config.stillProbability : 0.25;
+    const stillProb = style === "calm" ? 0.6 : baseStillProb;
+    if (Math.random() < stillProb) {
+      return { effectClass: "ip-still", duration: timing.duration, delay: timing.delay, transformOrigin: null, label: "ip-still" };
+    }
+
+    // Revive YuNet face-centered Ken Burns zoom (45% on photos with detected faces)
+    const faceOrigin = photoImage ? this.computeFaceObjectPosition(photoImage) : null;
+    const allowFaceZoom = this.config.faceDetection !== false && this.config.imageEffects.includes("ip-face-zoom");
+    if (faceOrigin && allowFaceZoom && Math.random() < (style === "calm" ? 0.65 : 0.45)) {
+      const cls = Math.random() < 0.6 ? "ip-face-zoom-in" : "ip-face-zoom-out";
+      return {
+        effectClass: cls,
+        duration: timing.duration,
+        delay: timing.delay,
+        transformOrigin: faceOrigin,
+        label: `${cls} ${timing.duration}`
+      };
+    }
+
+    if (style === "calm") {
+      const calmPool = ["ip-zoom", "ip-zoom-out"];
+      const cls = calmPool[Math.floor(Math.random() * calmPool.length)];
+      return { effectClass: cls, duration: timing.duration, delay: timing.delay, transformOrigin: faceOrigin, label: `${cls} ${timing.duration}` };
+    }
+
+    const movingEffects = this.config.imageEffects
+      .filter((e) => e !== "ip-face-zoom" && e !== "ip-still")
+      .concat(["ip-zoom-out"]);
+    if (movingEffects.length === 0) {
+      return { effectClass: "ip-still", duration: timing.duration, delay: timing.delay, transformOrigin: null, label: "ip-still" };
     }
 
     const randomEffect = movingEffects[Math.floor(Math.random() * movingEffects.length)];
-    return { effectClass: randomEffect, duration: randomDuration, label: `${randomEffect} ${randomDuration}` };
+    return {
+      effectClass: randomEffect,
+      duration: timing.duration,
+      delay: timing.delay,
+      transformOrigin: randomEffect.startsWith("ip-zoom") ? faceOrigin : null,
+      label: `${randomEffect} ${timing.duration}`
+    };
+  },
+
+  pickCollageEffectPair(photoA, photoB) {
+    const timing = this.getMotionTiming();
+    const style = this.motionStyle || "cinematic";
+    const mk = (cls, origin) => ({
+      effectClass: cls,
+      duration: timing.duration,
+      delay: timing.delay,
+      transformOrigin: origin || null,
+      label: cls === "ip-still" ? "ip-still" : `${cls} ${timing.duration}`
+    });
+
+    if (style === "still") {
+      return [mk("ip-still"), mk("ip-still")];
+    }
+
+    const stillProb = style === "calm" ? 0.55 : (typeof this.config.stillProbability === "number" ? this.config.stillProbability : 0.25);
+    if (Math.random() < stillProb) {
+      return [mk("ip-still"), mk("ip-still")];
+    }
+
+    const faceA = this.computeFaceObjectPosition(photoA);
+    const faceB = this.computeFaceObjectPosition(photoB);
+    const r = Math.random();
+
+    if (r < 0.45) {
+      // Harmonious opposing zoom (one zooms in gently, companion zooms out gently)
+      const inA = faceA ? "ip-face-zoom-in" : "ip-zoom";
+      const outB = faceB ? "ip-face-zoom-out" : "ip-zoom-out";
+      const inB = faceB ? "ip-face-zoom-in" : "ip-zoom";
+      const outA = faceA ? "ip-face-zoom-out" : "ip-zoom-out";
+      return Math.random() < 0.5 ? [mk(inA, faceA), mk(outB, faceB)] : [mk(outA, faceA), mk(inB, faceB)];
+    }
+
+    if (r < 0.78 || style === "calm") {
+      // One calm still + one gentle face/zoom focus
+      const focusA = mk(faceA ? "ip-face-zoom-in" : "ip-zoom", faceA);
+      const focusB = mk(faceB ? "ip-face-zoom-in" : "ip-zoom", faceB);
+      return Math.random() < 0.5 ? [focusA, mk("ip-still")] : [mk("ip-still"), focusB];
+    }
+
+    // Coordinated gentle drift in the same direction
+    const sharedDir = Math.random() < 0.5 ? "ip-panright" : "ip-panleft";
+    return [mk(sharedDir), mk(sharedDir)];
   },
 
   createExifWrapper(photoImage, options = {}) {
@@ -1235,7 +1339,7 @@ Module.register(ourModuleName, {
           const grid = document.createElement("div");
           grid.className = `mmip-collage-grid mmip-collage-${layout}`;
 
-          const picked = this.pickRegularEffect();
+          const pairEffects = this.pickCollageEffectPair(photoImage, companion);
           const pair = [photoImage, companion];
           let loadedCount = 0;
           let firstImgEl = null;
@@ -1244,11 +1348,15 @@ Module.register(ourModuleName, {
             const cell = document.createElement("div");
             cell.className = "mmip-collage-cell";
             const img = document.createElement("img");
-            const eff = idx === 0 ? picked : this.pickRegularEffect();
+            const eff = pairEffects[idx];
             item.effect = eff.label;
             const orientCls = layout === "vertical" ? "landscape" : "portrait";
             img.className = `bgimage mmip-bgimage mmip-collage-img ${orientCls} ${eff.effectClass}`;
             img.style.animationDuration = eff.duration;
+            img.style.animationDelay = eff.delay;
+            if (eff.transformOrigin) {
+              img.style.transformOrigin = eff.transformOrigin;
+            }
             img.style.opacity = self.config.opacity;
             const smartPos = self.computeFaceObjectPosition(item);
             if (smartPos) {
@@ -1290,9 +1398,13 @@ Module.register(ourModuleName, {
           // --- SINGLE IMAGE LOGIC (FS) ---
           const img = document.createElement("img");
 
-          const picked = this.pickRegularEffect();
+          const picked = this.pickRegularEffect(photoImage);
           img.className = `bgimage mmip-bgimage ${picked.effectClass}`;
           img.style.animationDuration = picked.duration;
+          img.style.animationDelay = picked.delay;
+          if (picked.transformOrigin) {
+            img.style.transformOrigin = picked.transformOrigin;
+          }
           const finalEffect = picked.label;
 
           img.classList.add(this.isPhotoPortrait(photoImage) ? "portrait" : "landscape");

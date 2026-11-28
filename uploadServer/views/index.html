@@ -741,6 +741,20 @@
                     </div>
                 </div>
 
+                <!-- 모션 스타일 & 전환 효과 -->
+                <div class="sub-box">
+                    <div class="sub-box-title"><span>✨ 모션 스타일 & 화면 전환</span></div>
+                    <div class="pills" id="motion-pills" style="margin-bottom:8px;">
+                        <button type="button" class="pill" data-motion="cinematic" onclick="setMotionStyle('cinematic')">🎬 시네마틱</button>
+                        <button type="button" class="pill" data-motion="calm" onclick="setMotionStyle('calm')">🌿 차분하게</button>
+                        <button type="button" class="pill" data-motion="still" onclick="setMotionStyle('still')">🖼️ 완전 정지</button>
+                    </div>
+                    <div class="pills" id="transition-pills">
+                        <button type="button" class="pill" data-transition="black" onclick="setTransitionMode('black')">⬛ 검정 페이드</button>
+                        <button type="button" class="pill" data-transition="crossfade" onclick="setTransitionMode('crossfade')">✨ 크로스페이드</button>
+                    </div>
+                </div>
+
                 <!-- 밝기 제어 -->
                 <div class="sub-box">
                     <div class="sub-box-title">
@@ -866,7 +880,7 @@
     </nav>
 
     <script>
-        let currentDisplayState = { galleryMode: false, filterMode: 'all', filterFolder: '', updateIntervalMs: 9000 };
+        let currentDisplayState = { galleryMode: false, filterMode: 'all', filterFolder: '', updateIntervalMs: 9000, motionStyle: 'cinematic', transitionMode: 'black' };
         let knownVisibleFolders = [];
         let selectedUploadFiles = [];
         let toastTimer = null;
@@ -1012,6 +1026,12 @@
             document.querySelectorAll('#speed-pills .pill').forEach((btn) => {
                 btn.classList.toggle('active', Number(btn.dataset.ms) === Number(currentDisplayState.updateIntervalMs || 9000));
             });
+            document.querySelectorAll('#motion-pills .pill').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.motion === (currentDisplayState.motionStyle || 'cinematic'));
+            });
+            document.querySelectorAll('#transition-pills .pill').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.transition === (currentDisplayState.transitionMode || 'black'));
+            });
             const sel = document.getElementById('filter-folder-select');
             if (sel) {
                 sel.style.display = currentDisplayState.filterMode === 'folder' ? 'block' : 'none';
@@ -1038,7 +1058,9 @@
                     galleryMode: Boolean(data.galleryMode),
                     filterMode: data.filterMode || 'all',
                     filterFolder: data.filterFolder || '',
-                    updateIntervalMs: Number(data.updateIntervalMs || 9000)
+                    updateIntervalMs: Number(data.updateIntervalMs || 9000),
+                    motionStyle: data.motionStyle || 'cinematic',
+                    transitionMode: data.transitionMode || 'black'
                 };
                 renderDisplayStateUi();
                 showToast(successMsg);
@@ -1069,6 +1091,16 @@
 
         function setSlideSpeed(ms) {
             updateDisplayState({ updateIntervalMs: ms }, `⏱️ 전환 속도 ${Math.round(ms / 1000)}초 적용`);
+        }
+
+        function setMotionStyle(motionStyle) {
+            const labels = { cinematic: '🎬 시네마틱 모션(얼굴 줌 포함)', calm: '🌿 차분한 모션(정지 60%)', still: '🖼️ 완전 정지(갤러리)' };
+            updateDisplayState({ motionStyle }, `✨ ${labels[motionStyle] || motionStyle} 적용`);
+        }
+
+        function setTransitionMode(transitionMode) {
+            const labels = { black: '⬛ 검정 페이드 전환', crossfade: '✨ 부드러운 크로스페이드 전환' };
+            updateDisplayState({ transitionMode }, `${labels[transitionMode] || transitionMode} 적용`);
         }
 
         const brightnessSlider = document.getElementById('brightness-slider');

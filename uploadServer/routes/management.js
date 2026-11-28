@@ -64,7 +64,14 @@ function readScreenStatus(callback) {
 }
 
 function readDisplayStateSync() {
-	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "", updateIntervalMs: 9000 };
+	const defaults = {
+		galleryMode: false,
+		filterMode: "all",
+		filterFolder: "",
+		updateIntervalMs: 9000,
+		motionStyle: "cinematic",
+		transitionMode: "black"
+	};
 	try {
 		if (fs.existsSync(DISPLAY_STATE_CACHE_FILE)) {
 			const parsed = JSON.parse(fs.readFileSync(DISPLAY_STATE_CACHE_FILE, "utf8"));
@@ -73,7 +80,9 @@ function readDisplayStateSync() {
 					galleryMode: Boolean(parsed.galleryMode),
 					filterMode: ["all", "favorites", "faces", "videos", "folder"].includes(parsed.filterMode) ? parsed.filterMode : "all",
 					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : "",
-					updateIntervalMs: typeof parsed.updateIntervalMs === "number" && parsed.updateIntervalMs >= 3000 ? Math.min(120000, Math.round(parsed.updateIntervalMs)) : 9000
+					updateIntervalMs: typeof parsed.updateIntervalMs === "number" && parsed.updateIntervalMs >= 3000 ? Math.min(120000, Math.round(parsed.updateIntervalMs)) : 9000,
+					motionStyle: ["cinematic", "calm", "still"].includes(parsed.motionStyle) ? parsed.motionStyle : "cinematic",
+					transitionMode: ["black", "crossfade"].includes(parsed.transitionMode) ? parsed.transitionMode : "black"
 				};
 			}
 		}
@@ -516,6 +525,12 @@ function createManagementRouter(uploadDir) {
 		if (typeof body.filterFolder === "string") next.filterFolder = body.filterFolder;
 		if (typeof body.updateIntervalMs === "number" && !Number.isNaN(body.updateIntervalMs)) {
 			next.updateIntervalMs = Math.max(3000, Math.min(120000, Math.round(body.updateIntervalMs)));
+		}
+		if (typeof body.motionStyle === "string" && ["cinematic", "calm", "still"].includes(body.motionStyle)) {
+			next.motionStyle = body.motionStyle;
+		}
+		if (typeof body.transitionMode === "string" && ["black", "crossfade"].includes(body.transitionMode)) {
+			next.transitionMode = body.transitionMode;
 		}
 		try {
 			saveDisplayStateSync(next);

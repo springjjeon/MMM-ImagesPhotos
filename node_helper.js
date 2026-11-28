@@ -166,7 +166,14 @@ function computeSeasonalMemory(year, month, day) {
 }
 
 function loadDisplayState() {
-	const defaults = { galleryMode: false, filterMode: "all", filterFolder: "", updateIntervalMs: 9000 };
+	const defaults = {
+		galleryMode: false,
+		filterMode: "all",
+		filterFolder: "",
+		updateIntervalMs: 9000,
+		motionStyle: "cinematic",
+		transitionMode: "black"
+	};
 	try {
 		if (fs.existsSync(DISPLAY_STATE_FILE)) {
 			const parsed = JSON.parse(fs.readFileSync(DISPLAY_STATE_FILE, "utf8"));
@@ -175,7 +182,9 @@ function loadDisplayState() {
 					galleryMode: Boolean(parsed.galleryMode),
 					filterMode: ["all", "favorites", "faces", "videos", "folder"].includes(parsed.filterMode) ? parsed.filterMode : "all",
 					filterFolder: typeof parsed.filterFolder === "string" ? parsed.filterFolder : "",
-					updateIntervalMs: typeof parsed.updateIntervalMs === "number" && parsed.updateIntervalMs >= 3000 ? Math.min(120000, Math.round(parsed.updateIntervalMs)) : 9000
+					updateIntervalMs: typeof parsed.updateIntervalMs === "number" && parsed.updateIntervalMs >= 3000 ? Math.min(120000, Math.round(parsed.updateIntervalMs)) : 9000,
+					motionStyle: ["cinematic", "calm", "still"].includes(parsed.motionStyle) ? parsed.motionStyle : "cinematic",
+					transitionMode: ["black", "crossfade"].includes(parsed.transitionMode) ? parsed.transitionMode : "black"
 				};
 			}
 		}
@@ -575,6 +584,12 @@ module.exports = NodeHelper.create({
 			}
 			if (typeof body.updateIntervalMs === "number" && !Number.isNaN(body.updateIntervalMs)) {
 				next.updateIntervalMs = Math.max(3000, Math.min(120000, Math.round(body.updateIntervalMs)));
+			}
+			if (typeof body.motionStyle === "string" && ["cinematic", "calm", "still"].includes(body.motionStyle)) {
+				next.motionStyle = body.motionStyle;
+			}
+			if (typeof body.transitionMode === "string" && ["black", "crossfade"].includes(body.transitionMode)) {
+				next.transitionMode = body.transitionMode;
 			}
 			this.displayState = next;
 			saveJsonCacheAtomic(DISPLAY_STATE_FILE, next);

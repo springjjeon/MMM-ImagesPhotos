@@ -98,88 +98,103 @@
 
 .bgimage.ip-zoom {
   transform-origin: center center;
-  animation: ip-zoom 20s ease-in-out both;
+  animation: ip-zoom 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
+}
+
+.bgimage.ip-zoom-out {
+  transform-origin: center center;
+  animation: ip-zoom-out 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-fade {
-  animation: ip-fade 20s ease-in-out both;
+  animation: ip-fade 12s ease-in-out both;
 }
 
 .bgimage.ip-panleft {
   transform-origin: center center;
-  animation: ip-panleft 20s linear both;
+  animation: ip-panleft 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-panright {
   transform-origin: center center;
-  animation: ip-panright 20s linear both;
+  animation: ip-panright 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-panup {
   transform-origin: center center;
-  animation: ip-panup 20s linear both;
+  animation: ip-panup 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-pandown {
   transform-origin: center center;
-  animation: ip-pandown 20s linear both;
+  animation: ip-pandown 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-zoom-panright {
   transform-origin: center center;
-  animation: ip-zoom-panright 20s linear both;
+  animation: ip-zoom-panright 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-zoom-panleft {
   transform-origin: center center;
-  animation: ip-zoom-panleft 20s linear both;
+  animation: ip-zoom-panleft 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-zoom-panup {
   transform-origin: center center;
-  animation: ip-zoom-panup 20s linear both;
+  animation: ip-zoom-panup 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-zoom-pandown {
   transform-origin: center center;
-  animation: ip-zoom-pandown 20s linear both;
+  animation: ip-zoom-pandown 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-face-zoom-in {
   transform-origin: center center;
-  animation: ip-face-zoom-in 20s ease-in-out both;
+  animation: ip-face-zoom-in 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-face-zoom-out {
   transform-origin: center center;
-  animation: ip-face-zoom-out 20s ease-in-out both;
+  animation: ip-face-zoom-out 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-pan-diag-tl-br {
   transform-origin: center center;
-  animation: ip-pan-diag-tl-br 20s linear both;
+  animation: ip-pan-diag-tl-br 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 .bgimage.ip-pan-diag-tr-bl {
   transform-origin: center center;
-  animation: ip-pan-diag-tr-bl 20s linear both;
+  animation: ip-pan-diag-tr-bl 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 .bgimage.ip-pan-diag-bl-tr {
   transform-origin: center center;
-  animation: ip-pan-diag-bl-tr 20s linear both;
+  animation: ip-pan-diag-bl-tr 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 .bgimage.ip-pan-diag-br-tl {
   transform-origin: center center;
-  animation: ip-pan-diag-br-tl 20s linear both;
+  animation: ip-pan-diag-br-tl 12s cubic-bezier(0.25, 0.08, 0.25, 1) both;
 }
 
 .bgimage.ip-still {
-  animation: ip-still 20s ease-in-out both;
+  animation: ip-still 12s ease-in-out both;
 }
 
-/* Keyframes */
+body.mmip-paused .MMM-ImagesPhotos .bgimage,
+body.mmip-paused .MMM-ImagesPhotos .mmip-collage-img {
+  animation-play-state: paused !important;
+}
+
+/* Keyframes (all pan offsets kept strictly inside scale(1.15) safe margin <= 6.5% to prevent black edge gaps) */
 @keyframes ip-zoom {
   0% { transform: scale(var(--base-scale)); }
-  100% { transform: scale(calc(var(--base-scale) * 1.08)); }
+  100% { transform: scale(calc(var(--base-scale) * 1.10)); }
+}
+
+@keyframes ip-zoom-out {
+  0% { transform: scale(calc(var(--base-scale) * 1.10)); }
+  100% { transform: scale(var(--base-scale)); }
 }
 
 @keyframes ip-face-zoom-in {
@@ -200,60 +215,60 @@
 }
 
 @keyframes ip-panleft {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(5.2%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-5.2%); }
 }
 
 @keyframes ip-panright {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-7%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(7%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-5.2%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(5.2%); }
 }
 
 @keyframes ip-panup {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(4.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-4.0%); }
 }
 
 @keyframes ip-pandown {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-4.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(4.0%); }
 }
 
 @keyframes ip-zoom-panright {
-  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateX(-2%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(6%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateX(-2.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(4.8%); }
 }
 
 @keyframes ip-zoom-panleft {
-  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateX(2%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-6%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateX(2.0%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateX(-4.8%); }
 }
 
 @keyframes ip-zoom-panup {
-  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateY(2%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateY(1.8%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(-4.0%); }
 }
 
 @keyframes ip-zoom-pandown {
-  0% { transform: scale(calc(var(--base-scale) * 1.05)) translateY(-2%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.06)) translateY(-1.8%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translateY(4.0%); }
 }
 
 @keyframes ip-pan-diag-tl-br {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, -5%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, 5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, -3.6%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, 3.6%); }
 }
 @keyframes ip-pan-diag-tr-bl {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, -5%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, 5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, -3.6%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, 3.6%); }
 }
 @keyframes ip-pan-diag-bl-tr {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, 5%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, -5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, 3.6%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, -3.6%); }
 }
 @keyframes ip-pan-diag-br-tl {
-  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(7%, 5%); }
-  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-7%, -5%); }
+  0% { transform: scale(calc(var(--base-scale) * 1.15)) translate(4.8%, 3.6%); }
+  100% { transform: scale(calc(var(--base-scale) * 1.15)) translate(-4.8%, -3.6%); }
 }
 
 @keyframes ip-still {
