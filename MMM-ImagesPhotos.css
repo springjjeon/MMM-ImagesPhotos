@@ -400,6 +400,12 @@ body.mmip-paused .MMM-ImagesPhotos .mmip-collage-img {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.16);
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+.mmip-qr-code.mmip-qr-visible {
+  opacity: 1;
 }
 
 .mmip-video {

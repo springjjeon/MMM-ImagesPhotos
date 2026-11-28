@@ -216,6 +216,9 @@ Module.register(ourModuleName, {
     if (typeof document !== "undefined" && document.body) {
       document.body.classList.toggle("mmip-paused", this.paused);
     }
+    if (this.paused) {
+      this.setQrVisible(false);
+    }
     this.updatePauseBadge();
     if (this.paused) {
       if (this.timer) {
@@ -688,7 +691,7 @@ Module.register(ourModuleName, {
     qrWrapper.style.backgroundColor = "rgba(0, 0, 0, 0.52)";
     qrWrapper.style.borderRadius = "12px";
 
-    if (this.config.qrCodePosition.includes("bottom")) qrWrapper.style.bottom = "20px";
+    if (this.config.qrCodePosition.includes("bottom")) qrWrapper.style.bottom = "115px";
     if (this.config.qrCodePosition.includes("top")) qrWrapper.style.top = "20px";
     if (this.config.qrCodePosition.includes("left")) qrWrapper.style.left = "20px";
     if (this.config.qrCodePosition.includes("right")) qrWrapper.style.right = "20px";
@@ -721,6 +724,13 @@ Module.register(ourModuleName, {
       this.overlayRoot.appendChild(qrNode);
       this.qrRendered = true;
     }
+  },
+
+  setQrVisible(visible) {
+    if (!this.overlayRoot) return;
+    const qr = this.overlayRoot.querySelector(".mmip-qr-code");
+    if (!qr) return;
+    qr.classList.toggle("mmip-qr-visible", Boolean(visible) && !this.paused);
   },
 
   clearFadeTimers() {
@@ -788,10 +798,14 @@ Module.register(ourModuleName, {
       video.play().catch((err) => handleVideoFailure(`Play error: ${err.message}`));
 
       const layer = video.parentElement;
+      self.setQrVisible(true);
       if (layer) {
         layer.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
         layer.style.opacity = 1;
       }
+      self.scheduleFadeTimer(() => {
+        self.setQrVisible(false);
+      }, fadeDuration);
       if (prevLayer) {
         self.scheduleFadeTimer(() => {
           while (prevLayer.firstChild) prevLayer.removeChild(prevLayer.firstChild);
@@ -805,6 +819,7 @@ Module.register(ourModuleName, {
           if (self.config.transitionMode !== "crossfade" && layer) {
             layer.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
             layer.style.opacity = 0;
+            self.setQrVisible(true);
             self.waitForNextPhotoAndUpdate(fadeDuration);
           } else {
             self.waitForNextPhotoAndUpdate(0);
@@ -850,10 +865,14 @@ Module.register(ourModuleName, {
       void fgContainer.offsetWidth;
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
 
-      // Smoothly crossfade new layer over previous layer (zero black flash)
+      // Smoothly crossfade new layer over previous layer (show QR only during crossfade)
+      self.setQrVisible(true);
       self.scheduleFadeTimer(() => {
         fgContainer.style.opacity = 1;
       }, 50);
+      self.scheduleFadeTimer(() => {
+        self.setQrVisible(false);
+      }, fadeDuration + 300);
 
       if (prevLayer) {
         self.scheduleFadeTimer(() => {
@@ -877,12 +896,18 @@ Module.register(ourModuleName, {
       void fgContainer.offsetWidth;
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
 
+      self.setQrVisible(true);
       self.scheduleFadeTimer(() => {
         fgContainer.style.opacity = 1;
       }, blackDuration);
 
       self.scheduleFadeTimer(() => {
+        self.setQrVisible(false);
+      }, blackDuration + fadeDuration);
+
+      self.scheduleFadeTimer(() => {
         fgContainer.style.opacity = 0;
+        self.setQrVisible(true);
       }, blackDuration + fadeDuration + displayDuration);
     }
   },
