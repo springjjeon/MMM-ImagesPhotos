@@ -798,14 +798,18 @@ Module.register(ourModuleName, {
       video.play().catch((err) => handleVideoFailure(`Play error: ${err.message}`));
 
       const layer = video.parentElement;
-      self.setQrVisible(true);
       if (layer) {
         layer.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
         layer.style.opacity = 1;
       }
-      self.scheduleFadeTimer(() => {
+      if (self.config.transitionMode === "crossfade") {
+        self.setQrVisible(true);
+        self.scheduleFadeTimer(() => {
+          self.setQrVisible(false);
+        }, Math.max(400, Math.round(fadeDuration * 0.6)));
+      } else {
         self.setQrVisible(false);
-      }, fadeDuration);
+      }
       if (prevLayer) {
         self.scheduleFadeTimer(() => {
           while (prevLayer.firstChild) prevLayer.removeChild(prevLayer.firstChild);
@@ -819,7 +823,7 @@ Module.register(ourModuleName, {
           if (self.config.transitionMode !== "crossfade" && layer) {
             layer.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
             layer.style.opacity = 0;
-            self.setQrVisible(true);
+            self.scheduleFadeTimer(() => self.setQrVisible(true), Math.round(fadeDuration * 0.5));
             self.waitForNextPhotoAndUpdate(fadeDuration);
           } else {
             self.waitForNextPhotoAndUpdate(0);
@@ -865,14 +869,14 @@ Module.register(ourModuleName, {
       void fgContainer.offsetWidth;
       fgContainer.style.transition = `opacity ${fadeDuration}ms ${easing}`;
 
-      // Smoothly crossfade new layer over previous layer (show QR only during crossfade)
+      // Smoothly crossfade new layer over previous layer (QR visible only while crossfading)
       self.setQrVisible(true);
       self.scheduleFadeTimer(() => {
         fgContainer.style.opacity = 1;
       }, 50);
       self.scheduleFadeTimer(() => {
         self.setQrVisible(false);
-      }, fadeDuration + 300);
+      }, Math.max(400, Math.round(fadeDuration * 0.6)));
 
       if (prevLayer) {
         self.scheduleFadeTimer(() => {
@@ -899,16 +903,16 @@ Module.register(ourModuleName, {
       self.setQrVisible(true);
       self.scheduleFadeTimer(() => {
         fgContainer.style.opacity = 1;
+        self.setQrVisible(false);
       }, blackDuration);
 
       self.scheduleFadeTimer(() => {
-        self.setQrVisible(false);
-      }, blackDuration + fadeDuration);
+        fgContainer.style.opacity = 0;
+      }, blackDuration + fadeDuration + displayDuration);
 
       self.scheduleFadeTimer(() => {
-        fgContainer.style.opacity = 0;
         self.setQrVisible(true);
-      }, blackDuration + fadeDuration + displayDuration);
+      }, blackDuration + fadeDuration + displayDuration + Math.round(fadeDuration * 0.5));
     }
   },
 
